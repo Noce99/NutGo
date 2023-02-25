@@ -1,7 +1,8 @@
-import random
 from abc import ABC, abstractmethod
 from math import sqrt, log
 import time
+
+EXPLORATION_CONSTANT = 1
 
 
 class MCTS:
@@ -13,26 +14,69 @@ class MCTS:
         :param explore_time_limit: The maximum explore time limit in seconds
         """
         self.root_node = root_node
-        self.root_node.explore()
-        self.path = []
-        self.actual_node = self.root_node
         self.explore_time_limit = explore_time_limit
 
-    def explore(self):
+        self.path = [self.root_node]
+        self.actual_node = self.root_node
+        self.root_node.explore()
+
+    def explore(self, verbose):
+        if verbose:
+            print("Starting Exploration!")
+            print("Actual Node:")
+            print(self.actual_node)
         starting_time = time.perf_counter()
         while time.perf_counter() - starting_time < self.explore_time_limit:
-            next_child = self.actual_node.get_next_unexplored_child
-            if next_child is None:
-                # All the children where already explored
-                next_child = self.actual_node.get_best_explored_child()
-                if next_child is None:
-                    break
-                self.path.append(next_child)
-                self.actual_node = next_child
-            else:
+            if verbose:
+                print("@" * 30)
+            next_child = self.actual_node.get_next_unexplored_child()
+            if next_child is not None:
+                # Actual Node have some not explored child: next_child
+                if verbose:
+                    print("Find out a non explored child: ")
+                    print(next_child)
                 next_child.explore()
                 self.path.append(next_child)
-                founded_result = self.actual_node.roll_out(next_child)
+                first_player_won = next_child.roll_out()
+                if verbose:
+                    print(f"After Roll_Out the winner is first player? {first_player_won}")
+                for node in self.path:
+                    node.update_statistic(first_player_won)
+                if verbose:
+                    print("After having updated statistic this are the child:")
+                    self.actual_node.print_children(0, deep=1)
+                self.path = [self.root_node]
+                self.actual_node = self.root_node
+            else:
+                # Actual Node have all the children already explored
+                next_child = self.actual_node.get_best_explored_child()
+                if next_child is None:
+                    # Actual Node is a Terminal Node
+                    first_player_won = self.actual_node.get_who_won()
+                    if verbose:
+                        print("The current node is final:")
+                        print(self.actual_node)
+                        print(f"And the winner is first player? {first_player_won}")
+                    for node in self.path:
+                        node.update_statistic(first_player_won)
+                    if verbose:
+                        print("After having updated statistic this are the child:")
+                        self.actual_node.print_children(0, deep=1)
+                    self.actual_node = self.root_node
+                    self.path = [self.root_node]
+                else:
+                    # Actual Node have a child: next_child
+                    if verbose:
+                        print("Selecting an explored child:")
+                        print(next_child)
+                        print("Chosen between:")
+                        self.actual_node.print_children(0, deep=1)
+                    self.path.append(next_child)
+                    self.actual_node = next_child
+        print(f"I have explored for {time.perf_counter() - starting_time} seconds!")
+        # self.root_node.print_children(0, deep=2)
+        result = [(child, child.wins / child.N) for child in self.root_node.children]
+        return result
 
 
 class Node(ABC):
@@ -42,80 +86,60 @@ class Node(ABC):
 
     def __init__(self, first_player: bool, state_value):
         """
-        :param first_player: True if is a Node for the first player, False if is a Node for the second one
+        :param first_player: True if the next one to move is the first player, False otherwise
         :param state_value: A unique value that represent the state
         """
-        self.children = []
-        self.children_counter = 0
-        self.state_value = state_value
-        self.explored = False
         self.first_player = first_player
+        self.state_value = state_value
+
+        self.children = []
+        self.explored = False
         self.all_children_explored = False
-        self.N = None
-        self.Ns = None
-        self.Qs = None
+        self.terminal_Node = None
+        self.N = 0
+        self.wins = 0
+        self.uct = None
+        self.u = None
+
+    def print_children(self, indentation, deep):
+        """
+        :param indentation: The number of tub before the output
+        :param deep: Number of children layers
+        :return:
+        """
+        print("\t" * indentation, end="")
+        print(f"{[str(self)]} N = {self.N} wins = {self.wins} fp = {self.first_player} value = {self.uct} " +
+              f"u = {self.u}")
+        if deep > 0:
+            for child in self.children:
+                child.print_children(indentation + 1, deep - 1)
 
     def explore(self):
-        self.__find_children()
+        self.terminal_Node = self.check_if_terminal()
+        if not self.terminal_Node:
+            self.find_children()
+            if len(self.children) == 0:
+                raise "Can't find children of a non terminal Node!"
         self.explored = True
-        self.N = 0
-        self.Ns = [0 for _ in range(len(self.children))]
-        self.Qs = [0 for _ in range(len(self.children))]
 
-    def update_statistic(self, first_player_win: bool, children_index: int):
+    def update_statistic(self, first_player_won: bool):
         """
-        :param first_player_win: True if the current player win, False if it loses and None if they tie
-        :param children_index: The index of the children that have been used to explore
+        :param first_player_won: True if the current player win, False if it loses and None if they tie
         """
         self.N += 1
-        self.Ns[children_index] += 1
-        if first_player_win is None:
-            self.Qs[children_index] += (0.5 - self.Qs[children_index]) / (self.Ns[children_index])
-        elif first_player_win:
-            if self.first_player:
-                self.Qs[children_index] += (1 - self.Qs[children_index]) / (self.Ns[children_index])
+        if first_player_won is not None:
+            if first_player_won:
+                self.wins += 1
             else:
-                self.Qs[children_index] += (0 - self.Qs[children_index]) / (self.Ns[children_index])
-        else:
-            if self.first_player:
-                self.Qs[children_index] += (0 - self.Qs[children_index]) / (self.Ns[children_index])
-            else:
-                self.Qs[children_index] += (1 - self.Qs[children_index]) / (self.Ns[children_index])
-
-    @abstractmethod
-    def __find_children(self):
-        """
-        Find all possible children of this node
-        You need to use the "self.add_children" method
-        """
-        pass
-
-    @abstractmethod
-    def __get_random_child(self):
-        """
-        Find a random child of this Node
-        :return: A Node that is a child of "self" and None if is not possible to find a child
-        """
-        pass
-
-    @abstractmethod
-    def __get_who_won(self):
-        """
-        Get who won this game (the state should be a final one)
-        :return: True if first_player won, False if the second player won and None in case of tie
-        """
-        pass
+                self.wins -= 1
 
     def is_terminal(self):
         """
-        :return: True if the node has no children
+        :return: True if the node is terminal
         """
         if not self.explored:
-            return None
-        if len(self.children) == 0:
-            return True
-        else:
-            return False
+            return self.check_if_terminal()
+        return self.terminal_Node
 
     def is_explored(self):
         """
@@ -126,183 +150,120 @@ class Node(ABC):
 
     def is_first_player(self):
         """
-        :return: True if is the First Player turn
+        :return: True if the first player is the next to move
         """
         return self.first_player
 
     def get_next_unexplored_child(self):
         """
         :return: return the next non explored child, "None" if all the children where explored,
-                    rais an error if the current node was not explored
+                    raise an error if the current node was not explored
         """
         if not self.explored:
-            raise "You asked children to a non explored Node!"
+            raise "You asked an unexplored children to a non explored Node!"
         if self.all_children_explored:
             return None
-        for _, c in self.children:
-            if not c.explored:
-                return c
+        for child in self.children:
+            if not child.explored:
+                return child
         self.all_children_explored = True
         return None
 
-    def get_best_explored_child(self, exploration_constant):
+    def get_best_explored_child(self):
         """
-        :return: return the explored child with the highest value, "None" if this node does not have
+        :return: return the explored child with the highest or lower value, "None" if this node does not have
                     any children, rise an error if it was not explored and also rise an error
                     if not all the children were explored
         """
         if not self.explored:
-            raise "You asked children to a non explored Node!"
+            raise "You asked the best explored child to a non explored Node!"
         if not self.all_children_explored:
-            raise "You asked best child to a Node with some unexplored children"
+            raise "You asked the best child to a Node with some unexplored children"
+        if self.terminal_Node:
+            return None
         best_child = None
-        best_child_value = None
-        for i in range(len(self.children)):
-            if self.first_player:
-                value = self.Qs[i] + exploration_constant*sqrt((log(self.N))/(self.Ns[i]))
+        best_child_uct = None
+        if self.is_first_player():
+            for child in self.children:
+                child.uct = child.wins/child.N + EXPLORATION_CONSTANT * sqrt(log(self.N) / (1 + child.N))
+                # child.u = + EXPLORATION_CONSTANT * sqrt(log(self.N) / (1 + child.N))
                 if best_child is None:
-                    best_child = i
-                    best_child_value = value
-                elif  value >  best_child_value:
-                    best_child = i
-                    best_child_value = value
-            else:
-                value = self.Qs[i] - exploration_constant * sqrt((log(self.N)) / (self.Ns[i]))
+                    best_child = child
+                    best_child_uct = child.uct
+                elif child.uct > best_child_uct:
+                    best_child = child
+                    best_child_uct = child.uct
+        else:
+            for child in self.children:
+                child.uct = child.wins/child.N - EXPLORATION_CONSTANT * sqrt(log(self.N) / (1 + child.N))
+                # child.u = - EXPLORATION_CONSTANT * sqrt(log(self.N) / (1 + child.N))
                 if best_child is None:
-                    best_child = i
-                    best_child_value = value
-                elif value < best_child_value:
-                    best_child = i
-                    best_child_value = value
-        return self.children[best_child]
+                    best_child = child
+                    best_child_uct = child.uct
+                elif child.uct < best_child_uct:
+                    best_child = child
+                    best_child_uct = child.uct
+        if best_child is None:
+            print(f"Terminal_Node : {self.terminal_Node}")
+            print(f"Explored : {self.explored}")
+            print(f"Children : {self.children}")
+            raise f"Seems like the Node is not terminal but it also don't have any child!"
+        return best_child
 
     def get_children(self):
         """
-        :return: "self.children" if explored otherwise rais an error
+        :return: "self.children" if explored otherwise raise an error
         """
         if not self.explored:
             raise "You asked children to a non explored Node!"
-        return [c for _, c in self.children]
+        return self.children
 
-    def add_children(self, children_state_value):
-        self.children.append((self.children_counter, children_state_value))
-        self.children_counter += 1
+    def add_children(self, child_node):
+        self.children.append(child_node)
 
-    def roll_out(self, starting_node):
+    def roll_out(self):
         """
-        The system play random move till the end of the game
-        :param starting_node: The Node from witch we are starting playing random moves
+        The system play random move till the end of the game starting from this Node
         :return: True if first_player won, False if the second player won and None in case of tie
         """
-        actual_node = starting_node
+        actual_node = self
         while True:
-            next_node = actual_node.__get_random_child()
-            if next_node is None:
-                # actual_node is a final Node
-                break
-        return actual_node.__get_who_won()
-
-
-    def __eq__(self, node2):
-        return self.state_value == node2.state_value
+            if actual_node.is_terminal():
+                return actual_node.get_who_won()
+            actual_node = actual_node.get_random_child()
 
     def __str__(self):
         return self.state_value
 
-
-class TicTacToeNode(Node):
-
-    def __init__(self, first_player: bool, state_value):
+    @abstractmethod
+    def find_children(self):
         """
-        :param first_player: True if is a Node for the first player, False if is a Node for the second one
-            we arbitrary decide that the first player is "x"
-        :param state_value: A unique value that represent the state:
-            x|_|o
-            _|x|x   --> ["x", "_", "o", "_", "x", "x", "o", "o", "_"]
-            o|o|_
+        Find all possible children of this node
+        You need to use the "self.add_children" method
         """
-        super().__init__(first_player, state_value)
+        raise "You need to Implement 'find_children'!"
 
-    def _Node__find_children(self):
-        for i, c in enumerate(self.state_value):
-            if c == "_":
-                new_value = self.state_value[:]
-                if self.is_first_player:
-                    # x turn
-                    new_value[i] = "x"
-                    self.add_children(TicTacToeNode(first_player=False, state_value=new_value))
-                else:
-                    # o turn
-                    new_value[i] = "o"
-                    self.add_children(TicTacToeNode(first_player=True, state_value=new_value))
+    @abstractmethod
+    def get_random_child(self):
+        """
+        Find a random child of this Node
+        :return: A Node that is a child of "self" and None if is not possible to find a child
+        """
+        raise "You need to Implement 'get_random_child'!"
 
-    def _Node__get_random_child(self):
-        empty_places = [i for i, c in enumerate(self.state_value) if c == "_"]
-        if empty_places:
-            # "empty_place" is empty
-            return None
-        new_value = self.state_value[:]
-        if self.is_first_player:
-            new_value[random.choice(empty_places)] = "x"
-        else:
-            new_value[random.choice(empty_places)] = "o"
-        return TicTacToeNode(first_player=not self.is_first_player, state_value=new_value)
+    @abstractmethod
+    def get_who_won(self):
+        """
+        Get who won this game
+        :return: True if first_player won, False if the second player won and None in case of tie or in case none won
+                    (it's not a terminal state)
+        """
+        raise "You need to Implement 'get_who_won'!"
 
-    def _Node__get_who_won(self):
-        # check raw
-        for raw in range(3):
-            first_el = self.state_value[raw*3]
-            if self.state_value[raw*3+1] == first_el and self.state_value[raw*3+2] == first_el:
-                # someone won
-                if first_el == "x":
-                    return True
-                elif first_el == "o":
-                    return False
-                raise "Checking who won of a non final game!"
-        # check columns
-        for column in range(3):
-            first_el = self.state_value[column]
-            if self.state_value[column+3] == first_el and self.state_value[column+6] == first_el:
-                # someone won
-                if first_el == "x":
-                    return True
-                elif first_el == "o":
-                    return False
-                raise "Checking who won of a non final game!"
-        # check diagonal
-        first_el = self.state_value[0]
-        if self.state_value[4] == first_el and self.state_value[8] == first_el:
-            # someone won
-            if first_el == "x":
-                return True
-            elif first_el == "o":
-                return False
-            raise "Checking who won of a non final game!"
-        first_el = self.state_value[2]
-        if self.state_value[4] == first_el and self.state_value[6] == first_el:
-            # someone won
-            if first_el == "x":
-                return True
-            elif first_el == "o":
-                return False
-            raise "Checking who won of a non final game!"
-        return None
-
-    def __str__(self):
-        result = ""
-        for i in range(3):
-            for ii, c in enumerate(self.state_value[i*3:(i+1)*3]):
-                if ii != 2:
-                    result += f"{c}|"
-                else:
-                    result += f"{c}\n"
-        return result
-
-
-A = TicTacToeNode(False, ["x", "_", "o", "_", "x", "x", "o", "o", "_"])
-print(A)
-print("Their children are:")
-A.explore()
-for i, c in enumerate(A.get_children()):
-    print(f"Children number {i}")
-    print(c)
+    @abstractmethod
+    def check_if_terminal(self):
+        """
+        Check if the current state is a final one
+        :return: True if the state is final False otherwise
+        """
+        raise "You need to Implement 'check_if_terminal'!"
