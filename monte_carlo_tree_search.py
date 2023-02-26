@@ -74,7 +74,7 @@ class MCTS:
                     self.path.append(next_child)
                     self.actual_node = next_child
         print(f"I have explored for {time.perf_counter() - starting_time} seconds!")
-        # self.root_node.print_children(0, deep=2)
+        # self.root_node.print_children(0, deep=1)
         result = [(child, child.wins / child.N) for child in self.root_node.children]
         return result
 
@@ -186,7 +186,7 @@ class Node(ABC):
         if self.is_first_player():
             for child in self.children:
                 child.uct = child.wins/child.N + EXPLORATION_CONSTANT * sqrt(log(self.N) / (1 + child.N))
-                # child.u = + EXPLORATION_CONSTANT * sqrt(log(self.N) / (1 + child.N))
+                child.u = + EXPLORATION_CONSTANT * sqrt(log(self.N) / (1 + child.N))
                 if best_child is None:
                     best_child = child
                     best_child_uct = child.uct
@@ -196,7 +196,7 @@ class Node(ABC):
         else:
             for child in self.children:
                 child.uct = child.wins/child.N - EXPLORATION_CONSTANT * sqrt(log(self.N) / (1 + child.N))
-                # child.u = - EXPLORATION_CONSTANT * sqrt(log(self.N) / (1 + child.N))
+                child.u = - EXPLORATION_CONSTANT * sqrt(log(self.N) / (1 + child.N))
                 if best_child is None:
                     best_child = child
                     best_child_uct = child.uct
