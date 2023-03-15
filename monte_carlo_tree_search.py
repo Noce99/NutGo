@@ -8,13 +8,14 @@ EXPLORATION_CONSTANT = 1
 class MCTS:
     """Monte Carlo tree searcher."""
 
-    def __init__(self, root_node, explore_time_limit):
+    def __init__(self, root_node, explore_time_limit, maximum_numer_of_simulations=-1):
         """
         :param root_node: Simply the root node
         :param explore_time_limit: The maximum explore time limit in seconds
         """
         self.root_node = root_node
         self.explore_time_limit = explore_time_limit
+        self.maximum_numer_of_simulations = maximum_numer_of_simulations
 
         self.path = [self.root_node]
         self.actual_node = self.root_node
@@ -26,6 +27,7 @@ class MCTS:
             print("Actual Node:")
             print(self.actual_node)
         starting_time = time.perf_counter()
+        simulation_counter = 0
         while time.perf_counter() - starting_time < self.explore_time_limit:
             if verbose:
                 print("@" * 30)
@@ -47,6 +49,9 @@ class MCTS:
                     self.actual_node.print_children(0, deep=1)
                 self.path = [self.root_node]
                 self.actual_node = self.root_node
+                simulation_counter += 1
+                if self.maximum_numer_of_simulations != -1 and simulation_counter >= self.maximum_numer_of_simulations:
+                    break
             else:
                 # Actual Node have all the children already explored
                 next_child = self.actual_node.get_best_explored_child()
@@ -64,8 +69,12 @@ class MCTS:
                         self.actual_node.print_children(0, deep=1)
                     self.actual_node = self.root_node
                     self.path = [self.root_node]
+                    simulation_counter += 1
+                    if self.maximum_numer_of_simulations != -1 and\
+                            simulation_counter >= self.maximum_numer_of_simulations:
+                        break
                 else:
-                    # Actual Node have a child: next_child
+                    # Actual Node have a child: next_child (is not terminal)
                     if verbose:
                         print("Selecting an explored child:")
                         print(next_child)
@@ -73,9 +82,60 @@ class MCTS:
                         self.actual_node.print_children(0, deep=1)
                     self.path.append(next_child)
                     self.actual_node = next_child
-        print(f"I have explored for {time.perf_counter() - starting_time} seconds!")
+        print(f"I have explored for {time.perf_counter() - starting_time} seconds and done {simulation_counter}"
+              f" simulations.")
         # self.root_node.print_children(0, deep=1)
-        result = [(child, child.wins / child.N) for child in self.root_node.children]
+
+        # Total number of matches:
+        n = sum([child.N for child in self.root_node.children])
+        # P(M) Probability of doing a move for each child:
+        p_m_s = [child.N / n for child in self.root_node.children]
+        # FIRST PLAYER
+        # Number of matches won by first player for each child:
+        n_fpw_s = [(child.wins + child.N) / 2 for child in self.root_node.children]
+        # P(1_V | M) Probability of first player winning doing the move for each child:
+        p_1v_m_s = [n_fpw_s[i] / child.N for i, child in enumerate(self.root_node.children)]
+        # Unormalize P(M | 1_V) Probability of doing that move given that first player won:
+        unormalize_p_m_1v_s = [p_1v_m_s[i] * p_m_s[i] for i in range(len(p_m_s))]
+        # P(M | 1_V)
+        p_m_1v_s = normalize(unormalize_p_m_1v_s)
+        # SECOND PLAYER
+        # Number of matches won by second player for each child:
+        n_spw_s = [(child.N - child.wins) / 2 for child in self.root_node.children]
+        # P(2_V | M) Probability of first player winning doing the move for each child:
+        p_2v_m_s = [n_spw_s[i] / child.N for i, child in enumerate(self.root_node.children)]
+        # Unormalize P(M | 1_V) Probability of doing that move given that first player won:
+        unormalize_p_m_2v_s = [p_2v_m_s[i] * p_m_s[i] for i in range(len(p_m_s))]
+        # P(M | 1_V)
+        p_m_2v_s = normalize(unormalize_p_m_2v_s)
+
+        result = [(child, p_m_1v_s[i]) for i, child in enumerate(self.root_node.children)]
+        if self.root_node.is_first_player():
+            """
+            board_size = len(self.root_node.state_value)
+            board = [[0 for _ in range(board_size)] for _ in range(board_size)]
+            for i, child in enumerate(self.root_node.children):
+                r, c = child.added_piece
+                board[r][c] = p_m_1v_s[i]
+            for r in range(board_size):
+                for c in range(board_size):
+                    print(f"{board[r][c]:.2f}", end="\t")
+                print()
+            """
+            result = [(child, p_m_1v_s[i]) for i, child in enumerate(self.root_node.children)]
+        else:
+            """
+            board_size = len(self.root_node.state_value)
+            board = [[0 for _ in range(board_size)] for _ in range(board_size)]
+            for i, child in enumerate(self.root_node.children):
+                r, c = child.added_piece
+                board[r][c] = p_m_2v_s[i]
+            for r in range(board_size):
+                for c in range(board_size):
+                    print(f"{board[r][c]:.2f}", end="\t")
+                print()
+            """
+            result = [(child, p_m_2v_s[i]) for i, child in enumerate(self.root_node.children)]
         return result
 
 
@@ -230,7 +290,7 @@ class Node(ABC):
         while True:
             if actual_node.is_terminal():
                 return actual_node.get_who_won()
-            actual_node = actual_node.get_random_child()
+            actual_node = actual_node.get_roll_out_child()
 
     def __str__(self):
         return self.state_value
@@ -244,12 +304,12 @@ class Node(ABC):
         raise "You need to Implement 'find_children'!"
 
     @abstractmethod
-    def get_random_child(self):
+    def get_roll_out_child(self):
         """
-        Find a random child of this Node
+        Find the next child during the rollout process (randomly or using a NN)
         :return: A Node that is a child of "self" and None if is not possible to find a child
         """
-        raise "You need to Implement 'get_random_child'!"
+        raise "You need to Implement 'get_roll_out_child'!"
 
     @abstractmethod
     def get_who_won(self):
@@ -267,3 +327,8 @@ class Node(ABC):
         :return: True if the state is final False otherwise
         """
         raise "You need to Implement 'check_if_terminal'!"
+
+
+def normalize(a_list):
+    total = sum(a_list)
+    return [element / total for element in a_list]

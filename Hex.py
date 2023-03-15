@@ -1,13 +1,17 @@
 import copy
 
+import torch
+
 from monte_carlo_tree_search import MCTS, Node
 import random
 from HexDisplay import Visualizer
+from Neural_Networks import HexLinearModel, Trainer
 
 
 class HexNode(Node):
 
-    def __init__(self, first_player: bool, state_value):
+    def __init__(self, first_player: bool, state_value, added_piece, default_policy=None,
+                 probability_of_random_move=1.0):
         """
         :param first_player: True if is a Node for the first player, False if is a Node for the second one
         :param state_value: A unique value that represent the state:
@@ -27,9 +31,16 @@ class HexNode(Node):
                 (bottom) lines.
             The tuple contain as second element 'True' if the piece is connected to the left (top) line.
             The tuple contain as second element 'False' if the piece is connected to the right (bottom) line.
+        :param added_piece: A Tuple containing the raw and the column of the last added piece
+        :param default_policy: A function from witch is possible to get the next move during roll-out
+        :param probability_of_random_move: Probability of doing a random move during roll-out
         """
         super().__init__(first_player, state_value)
-        self.size = len(state_value)- 1
+        self.added_piece = added_piece
+        self.default_policy = default_policy
+        self.probability_of_random_move = probability_of_random_move
+
+        self.size = len(state_value) - 1
         self.final_state = False
         self.winner_first_player = None
 
@@ -171,15 +182,28 @@ class HexNode(Node):
             for c, cell in enumerate(raw):
                 if cell is None:
                     new_node = HexNode(first_player=not self.is_first_player(),
-                                       state_value=copy.deepcopy(self.state_value))
+                                       state_value=copy.deepcopy(self.state_value),
+                                       added_piece=(r, c),
+                                       default_policy=self.default_policy,
+                                       probability_of_random_move=self.probability_of_random_move,
+                                       )
                     new_node.add_piece(r, c, self.is_first_player())
                     self.add_children(new_node)
 
-    def get_random_child(self):
-        possible_move = [(r, c) for r, raw in enumerate(self.state_value) for c, cell in enumerate(raw) if cell is None]
-        random_index = random.randrange(len(possible_move))
-        selected_r, selected_c = possible_move[random_index]
-        new_node = HexNode(first_player=not self.is_first_player(), state_value=copy.deepcopy(self.state_value))
+    def get_roll_out_child(self):
+        if self.default_policy is None or random.random() < self.probability_of_random_move:
+            possible_move = [(r, c) for r, raw in enumerate(self.state_value)
+                             for c, cell in enumerate(raw) if cell is None]
+            random_index = random.randrange(len(possible_move))
+            selected_r, selected_c = possible_move[random_index]
+        else:
+            selected_r, selected_c, _ = self.default_policy(self.state_value, self.first_player)
+        new_node = HexNode(first_player=not self.is_first_player(),
+                           state_value=copy.deepcopy(self.state_value),
+                           added_piece=(selected_r, selected_c),
+                           default_policy=self.default_policy,
+                           probability_of_random_move=self.probability_of_random_move,
+                           )
         new_node.add_piece(selected_r, selected_c, self.is_first_player())
         return new_node
 
@@ -193,15 +217,33 @@ class HexNode(Node):
         return str(self.state_value)
 
 
+"""
 def get_move_from_human(vi, actual_s):
     move = vi.human_turn(actual_s.state_value)
-    new_node = HexNode(first_player=not actual_s.is_first_player(), state_value=actual_s.state_value[:])
+    new_node = HexNode(first_player=not actual_s.is_first_player(),
+                       state_value=actual_s.state_value[:],
+                       added_piece=(move[0], move[1]),
+                       neural_network=actual_s.neural_network,
+                       probability_of_random_move=actual_s.probability_of_random_move,
+                       )
     new_node.add_piece(move[0], move[1], actual_s.is_first_player())
     return new_node
 
 
-def get_move_from_computer(actual_s, time, verbose=False):
-    my_MCS = MCTS(actual_s, time)
+def get_move_from_nn(nn, actual_s):
+    move = nn.predict_move(actual_s.state_value, actual_s.is_first_player, verbose=True)
+    new_node = HexNode(first_player=not actual_s.is_first_player(),
+                       state_value=actual_s.state_value[:],
+                       added_piece=(move[0], move[1]),
+                       neural_network=actual_s.neural_network,
+                       probability_of_random_move=actual_s.probability_of_random_move,
+                       )
+    new_node.add_piece(move[0], move[1], actual_s.is_first_player())
+    return new_node
+
+
+def get_move_from_computer(actual_s, time, verbose=False, max_num_of_simulations=-1):
+    my_MCS = MCTS(actual_s, time, max_num_of_simulations)
     result = my_MCS.explore(verbose=verbose)
     best_child = result[0][0]
     max_value = result[0][1]
@@ -214,12 +256,12 @@ def get_move_from_computer(actual_s, time, verbose=False):
             if r[1] > max_value:
                 best_child = r[0]
                 max_value = r[1]
-    return best_child
+    return best_child, result
 
 
 def play_human_vs_human_game(board_size):
     vi = Visualizer(board_size)
-    start_state = HexNode(True, [[None for _ in range(board_size)] for _ in range(board_size)])
+    start_state = HexNode(True, [[None for _ in range(board_size)] for _ in range(board_size)], None)
     state = start_state
     while True:
         state = get_move_from_human(vi, state)
@@ -236,10 +278,10 @@ def play_human_vs_human_game(board_size):
 
 def play_human_vs_computer_game(board_size, time):
     vi = Visualizer(board_size)
-    start_state = HexNode(True, [[None for _ in range(board_size)] for _ in range(board_size)])
+    start_state = HexNode(True, [[None for _ in range(board_size)] for _ in range(board_size)], None)
     state = start_state
     while True:
-        state = get_move_from_computer(state, time)
+        state, _ = get_move_from_computer(state, time)
         if state.final_state:
             print("Game Finished!")
             if state.winner_first_player:
@@ -261,12 +303,13 @@ def play_human_vs_computer_game(board_size, time):
                 pass
 
 
-def play_computer_vs_computer_game(board_size, time):
+def play_computer_vs_computer_game(board_size, time, max_num_of_simulations=-1):
     vi = Visualizer(board_size)
-    start_state = HexNode(True, [[None for _ in range(board_size)] for _ in range(board_size)])
+    start_state = HexNode(True, [[None for _ in range(board_size)] for _ in range(board_size)], None)
     state = start_state
     while True:
-        state = get_move_from_computer(HexNode(True, copy.deepcopy(state.state_value)), time)
+        state, _ = get_move_from_computer(HexNode(True, copy.deepcopy(state.state_value), state.added_piece), time,
+                                          max_num_of_simulations=max_num_of_simulations)
         if state.final_state:
             print("Game Finished!")
             if state.winner_first_player:
@@ -279,7 +322,8 @@ def play_computer_vs_computer_game(board_size, time):
             while True:
                 pass
         vi.print_board(state.state_value)
-        state = get_move_from_computer(HexNode(False, copy.deepcopy(state.state_value)), time)
+        state, _ = get_move_from_computer(HexNode(False, copy.deepcopy(state.state_value), state.added_piece), time,
+                                          max_num_of_simulations=max_num_of_simulations)
         if state.final_state:
             print("Game Finished!")
             if state.winner_first_player:
@@ -294,19 +338,85 @@ def play_computer_vs_computer_game(board_size, time):
         vi.print_board(state.state_value)
 
 
-red_won = 0
-blue_won = 0
-while True:
-    result = play_computer_vs_computer_game(5, 10)
-    if result == 1:
-        red_won += 1
-    else:
-        blue_won += 1
-    print(f"RED: {red_won}, BLUE: {blue_won}")
+def test_training_with_data_from_monte_carlo(board_size):
+    model = HexLinearModel(board_size)
+    coach = Trainer(2, 0.1, 200, model)
+
+    start_state = HexNode(True, [[None for _ in range(board_size)] for _ in range(board_size)], None)
+    my_mcs = MCTS(start_state, 5)
+    result = my_mcs.explore(verbose=False)
+    coach.add_data(start_state.state_value, start_state.first_player, result)
+    coach.add_data(start_state.state_value, start_state.first_player, result)
+    coach.add_data(start_state.state_value, start_state.first_player, result)
+    coach.add_data(start_state.state_value, start_state.first_player, result)
+    coach.print_how_much_data()
+    coach.train()
+
+    move_from_nn = coach.predict(start_state.state_value, start_state.first_player)
+    print(move_from_nn)
+
+
+def train_neural_network(board_size, prob_of_random_move, each_move_time, num_of_games, max_num_of_simulations=-1):
+
+    return coach
+
+
+def human_vs_neural_network(nn):
+    nn.model.eval()
+    board_size = nn.model.board_size
+    vi = Visualizer(board_size)
+    start_state = HexNode(True, [[None for _ in range(board_size)] for _ in range(board_size)], None)
+    state = start_state
+    while True:
+        state = get_move_from_nn(nn, state)
+        if state.final_state:
+            print("Game Finished!")
+            if state.winner_first_player:
+                print("Red Won!")
+            else:
+                print("Blue Won!")
+            vi.finished_game(state.state_value)
+            while True:
+                pass
+        state = get_move_from_human(vi, state)
+        if state.final_state:
+            print("Game Finished!")
+            if state.winner_first_player:
+                print("Red Won!")
+            else:
+                print("Blue Won!")
+            vi.finished_game(state.state_value)
+            while True:
+                pass
+
+
+if __name__ == "__main__":
+    # test_training_with_data_from_monte_carlo(3)
+    # nn = train_neural_network(board_size=4, prob_of_random_move=0.5, each_move_time=1, num_of_games=100,
+    #                          max_num_of_simulations=2000)
+    # nn.save("Pesi_4x4.w")
+    # play_computer_vs_computer_game(4, 1, 2000)
+    model = HexLinearModel(4)
+    model.load_state_dict(torch.load("Pesi_4x4.w"))
+    model.eval()
+    coach = Trainer(50, 0.1, 1000, model)
+    human_vs_neural_network(coach)
+"""
 
 """
 result = play_computer_vs_computer_game(6, 10)
 RED: 136, BLUE: 74
 result = play_computer_vs_computer_game(5, 10)
 RED: 30, BLUE: 6
+
+Code:
+    red_won = 0
+    blue_won = 0
+    while True:
+        result = play_computer_vs_computer_game(5, 10)
+        if result == 1:
+            red_won += 1
+        else:
+            blue_won += 1
+        print(f"RED: {red_won}, BLUE: {blue_won}")
 """

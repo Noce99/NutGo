@@ -23,7 +23,7 @@ class NimNode(Node):
                 new_state_value[column] = elements - element_to_remove
                 self.add_children(NimNode(first_player=not self.is_first_player(), state_value=new_state_value))
 
-    def get_random_child(self):
+    def get_roll_out_child(self):
         possible_move = [(column, element_to_remove) for column in range(len(self.state_value))
                          for element_to_remove in range(1, self.state_value[column]+1)]
         random_index = random.randrange(len(possible_move))

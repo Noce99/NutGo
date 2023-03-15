@@ -28,7 +28,7 @@ class TicTacToeNode(Node):
                     new_value[i] = "o"
                 self.add_children(TicTacToeNode(first_player=not self.is_first_player(), state_value=new_value))
 
-    def get_random_child(self):
+    def get_roll_out_child(self):
         empty_places = [i for i, c in enumerate(self.state_value) if c == "_"]
         if not empty_places:
             # "empty_places" is empty
