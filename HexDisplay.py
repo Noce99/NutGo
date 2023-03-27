@@ -5,8 +5,6 @@ from screeninfo import get_monitors
 from pygame.locals import *
 from math import sin, cos, pi, sqrt
 
-from NutGo.Neural_Networks import to_cuda
-
 
 class Visualizer:
     def __init__(self, board_size):
@@ -182,28 +180,26 @@ class Visualizer:
 
     def show_dataset(self, dataset):
         for i in range(len(dataset)):
-            for j in range(dataset[i][0].shape[0]):
-                state = dataset[i][0][j]
-                result = dataset[i][1][j]
-                hex_state = [[None for _ in range(self.board_size)] for _ in range(self.board_size)]
-                r = 0
-                c = 0
-                for ii, element in enumerate(state[1:]):
-                    if element == 1:
-                        hex_state[r][c] = (True, None)
-                    elif element == -1:
-                        hex_state[r][c] = (False, None)
-                    c += 1
-                    if (ii + 1) % self.board_size == 0:
-                        r += 1
-                        c = 0
-                if state[0] == 1:
-                    self.print_board(hex_state, True)
-                else:
-                    self.print_board(hex_state, False)
-                self.print_probability(result)
-                self.wait_until_click()
-            break
+            state = dataset[i][0][0]
+            result = dataset[i][1][0]
+            hex_state = [[None for _ in range(self.board_size)] for _ in range(self.board_size)]
+            r = 0
+            c = 0
+            for ii, element in enumerate(state[1:]):
+                if element == 1:
+                    hex_state[r][c] = (True, None)
+                elif element == -1:
+                    hex_state[r][c] = (False, None)
+                c += 1
+                if (ii + 1) % self.board_size == 0:
+                    r += 1
+                    c = 0
+            if state[0] == 1:
+                self.print_board(hex_state, True)
+            else:
+                self.print_board(hex_state, False)
+            self.print_probability(result)
+            self.wait_until_click()
 
     def visual_evaluation(self, dataset, nn):
         for i in range(len(dataset)):
@@ -227,7 +223,7 @@ class Visualizer:
                 else:
                     self.print_board(hex_state, False)
                 self.print_probability(result)
-                predicted_tensor = torch.flatten(nn.predict(to_cuda(state[None, :])))
+                predicted_tensor = nn.predict(state[None, :])
                 self.print_probability(predicted_tensor, offset=30)
                 self.wait_until_click()
             break

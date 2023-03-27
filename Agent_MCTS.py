@@ -18,7 +18,7 @@ class MCTSAget(Agent):
         result = my_MCS.explore(verbose=False)
         # for r, p in result:
         #    print(r.added_piece, p)
-        probability = from_result_to_1d_tensor(4, result, first_player)
+        probability = from_result_to_1d_tensor(4, result)
         # print(torch.reshape(probability, (4, 4)))
         best_child = result[0][0]
         max_value = result[0][1]

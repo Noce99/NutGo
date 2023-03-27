@@ -82,12 +82,15 @@ class MCTS:
                         self.actual_node.print_children(0, deep=1)
                     self.path.append(next_child)
                     self.actual_node = next_child
-        print(f"I have explored for {time.perf_counter() - starting_time} seconds and done {simulation_counter}"
-              f" simulations.")
+        # print(f"I have explored for {time.perf_counter() - starting_time} seconds and done {simulation_counter}"
+        #       f" simulations.")
         # self.root_node.print_children(0, deep=1)
 
         # Total number of matches:
         n = sum([child.N for child in self.root_node.children])
+        for child in self.root_node.children:
+            if child.N == 0:
+                child.N = 1
         # P(M) Probability of doing a move for each child:
         p_m_s = [child.N / n for child in self.root_node.children]
         # FIRST PLAYER
@@ -331,4 +334,6 @@ class Node(ABC):
 
 def normalize(a_list):
     total = sum(a_list)
+    if total == 0:
+        total = 1
     return [element / total for element in a_list]
