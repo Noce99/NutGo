@@ -1,8 +1,8 @@
 import torch
 
 from Agent import Agent
-from NutGo.Agent_DRL import from_result_to_1d_tensor
-from NutGo.Hex import HexNode
+from Agent_DRL import from_result_to_tensor
+from Hex import HexNode
 from monte_carlo_tree_search import MCTS
 
 
@@ -18,7 +18,7 @@ class MCTSAget(Agent):
         result = my_MCS.explore(verbose=False)
         # for r, p in result:
         #    print(r.added_piece, p)
-        probability = from_result_to_1d_tensor(4, result)
+        probability = from_result_to_tensor(len(state_value), result)
         # print(torch.reshape(probability, (4, 4)))
         best_child = result[0][0]
         max_value = result[0][1]
@@ -26,4 +26,4 @@ class MCTSAget(Agent):
             if r[1] > max_value:
                 best_child = r[0]
                 max_value = r[1]
-        return best_child.added_piece[0], best_child.added_piece[1], torch.flatten(probability)
+        return best_child.added_piece[0], best_child.added_piece[1], probability

@@ -1,11 +1,13 @@
 import copy
-from monte_carlo_tree_search import MCTS, Node
+
+from HexDisplay import Visualizer
+from monte_carlo_tree_search import Node
 import random
 
 
 class HexNode(Node):
 
-    def __init__(self, first_player: bool, state_value, added_piece, default_policy=None,
+    def __init__(self, first_player: bool, state_value, added_piece=None, default_policy=None,
                  probability_of_random_move=1.0):
         """
         :param first_player: True if is a Node for the first player, False if is a Node for the second one
@@ -192,7 +194,7 @@ class HexNode(Node):
             random_index = random.randrange(len(possible_move))
             selected_r, selected_c = possible_move[random_index]
         else:
-            selected_r, selected_c, _ = self.default_policy(self.state_value, self.first_player)
+            selected_r, selected_c, _ = self.default_policy(self, self.first_player)
         new_node = HexNode(first_player=not self.is_first_player(),
                            state_value=copy.deepcopy(self.state_value),
                            added_piece=(selected_r, selected_c),
@@ -211,8 +213,3 @@ class HexNode(Node):
     def __str__(self):
         return str(self.state_value)
 
-
-class Hex:
-    def __init__(self, board_size):
-        self.board_size = board_size
-        

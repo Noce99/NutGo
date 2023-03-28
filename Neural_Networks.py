@@ -5,6 +5,8 @@ import random
 import matplotlib.pyplot as plt
 from prettytable import PrettyTable
 
+from Utils import my_argmax
+
 
 def count_parameters(model):
     table = PrettyTable(["Modules", "Parameters"])
@@ -19,31 +21,6 @@ def count_parameters(model):
     return total_params
 
 
-class HexLinearModel(nn.Module):
-
-    def __init__(self, board_size):
-
-        super().__init__()
-        self.board_size = board_size
-        self.next_move_finder = nn.Sequential(
-            # + 1 because we add the player playing
-            nn.Linear(self.board_size*self.board_size + 1, 64),
-            nn.ReLU(),
-            nn.Linear(64, self.board_size * self.board_size),
-            nn.ReLU(),
-            nn.Softmax(dim=1)
-        )
-
-    def forward(self, x):
-        # print(x.shape)
-        # print(x[0])
-        x = self.next_move_finder(x)
-        # print(x.shape)
-        # print(x[0])
-        # print(torch.sum(x[0]))
-        return x
-
-
 class HexConvolutionalModel(nn.Module):
 
     def __init__(self, board_size):
@@ -51,41 +28,29 @@ class HexConvolutionalModel(nn.Module):
         super().__init__()
         self.next_move_finder = nn.Sequential(
             # 2 channel because one is with the probability and the second one is with first_player
-            nn.Conv2d(in_channels=2, out_channels=16, kernel_size=(3, 3), padding=0),
-            nn.BatchNorm2d(16),
+            nn.Conv2d(in_channels=4, out_channels=8, kernel_size=(3, 3), padding=0),
+            nn.BatchNorm2d(8),
             nn.ReLU(),
             nn.Dropout(0.05),
-            nn.Conv2d(in_channels=16, out_channels=32, kernel_size=(3, 3), padding=0),
-            nn.BatchNorm2d(32),
+            nn.Conv2d(in_channels=8, out_channels=16, kernel_size=(3, 3), padding=0),
+            nn.BatchNorm2d(16),
             nn.ReLU(),
             nn.Dropout(0.05),
             # To be DONE!
-            nn.ConvTranspose2d(in_channels=32, out_channels=16, kernel_size=(3, 3), padding=0),
-            nn.BatchNorm2d(16),
+            nn.ConvTranspose2d(in_channels=16, out_channels=8, kernel_size=(3, 3), padding=0),
+            nn.BatchNorm2d(8),
             nn.ReLU(),
             nn.Dropout(0.05),
-            nn.ConvTranspose2d(in_channels=16, out_channels=1, kernel_size=(3, 3), padding=0),
+            nn.ConvTranspose2d(in_channels=8, out_channels=1, kernel_size=(3, 3), padding=0),
             nn.ReLU(),
             # nn.Softmax(1)
         )
+        for p_name, p in self.named_parameters():
+            p.data = torch.randn(p.shape) * 0.2  # Random weight initialization
+            p.requires_grad = True  # Not Freeze
 
     def forward(self, x):
-        player = x[:, 0]
-        player = torch.reshape(player, (player.shape[0], 1, 1))
-        player_layer = torch.ones(x.shape[0], self.board_size, self.board_size)
-        player_layer = player_layer*player
-        x = torch.reshape(x[:, 1:], (x.shape[0], self.board_size, self.board_size))
-        ready_to_use = torch.concatenate([player_layer[:, None, :, :], x[:, None, :, :]], dim=1)
-        out = self.next_move_finder(ready_to_use)
-        """
-        x = nn.Conv2d(in_channels=2, out_channels=16, kernel_size=(3, 3), padding=0)(ready_to_use)
-        x = nn.ReLU()(x)
-        x = nn.Conv2d(in_channels=16, out_channels=32, kernel_size=(3, 3), padding=0)(x)
-        x = nn.ReLU()(x)
-        print(x)
-        """
-        # print(out)
-        out = torch.flatten(out, start_dim=1)
+        out = self.next_move_finder(x)
         return out
 
 
@@ -133,11 +98,16 @@ class Trainer:
         # Reset all computed gradients to 0
         self.optimizer.zero_grad()
 
-        x_batch = x_batch
-        y_batch = y_batch
+        # TESTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT
+        for i in range(y_batch.shape[0]):
+            r_max, c_max = my_argmax(y_batch[i])
+            y_batch[i] = torch.zeros_like(y_batch[i])
+            y_batch[i, r_max, c_max] = 1.0
+
 
         # Perform the forward pass
         predictions = self.model(x_batch)
+        predictions = predictions[:, 0, :, :]
 
         ###################################################################
         """
@@ -180,29 +150,32 @@ class Trainer:
         self.model.eval()
 
     def predict(self, tensor_state_value):
-        prediction = self.model.forward(tensor_state_value)
+        prediction = self.model.forward(tensor_state_value[None, :])[0, 0]
 
-        sum_prediction = torch.sum(prediction[tensor_state_value[:, 1:] == 0])
+        pieces = tensor_state_value[3]
+        board_size = pieces.shape[0]
+
+        sum_prediction = torch.sum(prediction[pieces == 0])
+        # print(prediction)
+
         if sum_prediction == 0:
             # The sum of the probability of the not occupied cell is zero, so we select a random free cell
             # print("The sum of probability on free cell was 0 but I'm smart so I select a random move:")
             # print(prediction)
-            possibility = [i - 1 for i in range(1, tensor_state_value.shape[1]) if tensor_state_value[:, i] == 0]
+            possibility = []
+            for row in range(board_size):
+                for col in range(board_size):
+                    if pieces[row, col] == 0:
+                        possibility.append((row, col))
             if len(possibility) == 0:
                 print("Asked to predict a move but no free cell available!")
-                print("tensor_state_value")
-                print(tensor_state_value)
-                print("prediction")
-                print(prediction)
-                print("tensor_state_value[:, 1:] != 0")
-                print(tensor_state_value[:, 1:] != 0)
                 exit()
             else:
                 rand_index = random.randrange(len(possibility))
-                prediction[tensor_state_value[:, 1:] != 0] = 0
-                prediction[:, possibility[rand_index]] = 1.0
+                prediction = torch.zeros(board_size, board_size)
+                prediction[possibility[rand_index][0], possibility[rand_index][1]] = 1.0
         else:
-            prediction[tensor_state_value[:, 1:] != 0] = 0
+            prediction[pieces != 0] = 0
             prediction = prediction/sum_prediction
         return prediction
 
@@ -213,7 +186,5 @@ class Trainer:
 
 if __name__ == "__main__":
     hex_conv = HexConvolutionalModel(7)
-    hex_lin = HexLinearModel(7)
     print(hex_conv.forward(torch.ones(32, 50)).shape)
     count_parameters(hex_conv)
-    count_parameters(hex_lin)

@@ -19,7 +19,8 @@ class MCTS:
 
         self.path = [self.root_node]
         self.actual_node = self.root_node
-        self.root_node.explore()
+        if not root_node.explored:
+            self.root_node.explore()
 
     def explore(self, verbose):
         if verbose:
@@ -112,32 +113,40 @@ class MCTS:
         # P(M | 1_V)
         p_m_2v_s = normalize(unormalize_p_m_2v_s)
 
-        result = [(child, p_m_1v_s[i]) for i, child in enumerate(self.root_node.children)]
+        if sum(p_m_1v_s) == 0:
+            print("p_m_s")
+            print(p_m_s)
+            print("n_fpw_s")
+            print(n_fpw_s)
+            print("p_1v_m_s")
+            print(p_1v_m_s)
+            print("unormalize_p_m_1v_s")
+            print(unormalize_p_m_1v_s)
+            print("p_m_1v_s")
+            print(p_m_1v_s)
+            print("Final parent Node?")
+            print(self.root_node.final_state)
+            print("State:")
+            print(self.root_node.state_value)
+        if sum(p_m_2v_s) == 0:
+            print("p_m_s")
+            print(p_m_s)
+            print("n_spw_s")
+            print(n_spw_s)
+            print("p_2v_m_s")
+            print(p_2v_m_s)
+            print("unormalize_p_m_2v_s")
+            print(unormalize_p_m_2v_s)
+            print("p_m_2v_s")
+            print(p_m_2v_s)
+            print("Final parent Node?")
+            print(self.root_node.final_state)
+            print("State:")
+            print(self.root_node.state_value)
+
         if self.root_node.is_first_player():
-            """
-            board_size = len(self.root_node.state_value)
-            board = [[0 for _ in range(board_size)] for _ in range(board_size)]
-            for i, child in enumerate(self.root_node.children):
-                r, c = child.added_piece
-                board[r][c] = p_m_1v_s[i]
-            for r in range(board_size):
-                for c in range(board_size):
-                    print(f"{board[r][c]:.2f}", end="\t")
-                print()
-            """
             result = [(child, p_m_1v_s[i]) for i, child in enumerate(self.root_node.children)]
         else:
-            """
-            board_size = len(self.root_node.state_value)
-            board = [[0 for _ in range(board_size)] for _ in range(board_size)]
-            for i, child in enumerate(self.root_node.children):
-                r, c = child.added_piece
-                board[r][c] = p_m_2v_s[i]
-            for r in range(board_size):
-                for c in range(board_size):
-                    print(f"{board[r][c]:.2f}", end="\t")
-                print()
-            """
             result = [(child, p_m_2v_s[i]) for i, child in enumerate(self.root_node.children)]
         return result
 
@@ -335,5 +344,6 @@ class Node(ABC):
 def normalize(a_list):
     total = sum(a_list)
     if total == 0:
-        total = 1
-    return [element / total for element in a_list]
+        return [1 / len(a_list) for _ in a_list]
+    else:
+        return [element / total for element in a_list]

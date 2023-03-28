@@ -19,7 +19,6 @@ class HexGame:
         vi = Visualizer(self.board_size)
         start_state = HexNode(True, [[None for _ in range(self.board_size)] for _ in range(self.board_size)], None)
         state = start_state
-        probability = None
         while True:
             r, c, probability = agent1.get_move(vi, state.state_value, state.is_first_player())
             state = HexNode(first_player=not state.is_first_player(),
@@ -64,25 +63,24 @@ class HexGame:
 
 
 if __name__ == "__main__":
-    dlr_agent = HexAgent(board_size=7, batch_size=64, learning_rate=1, max_num_of_data=4000)
-    dlr_agent.load_weight("7x7_best_against_100_2c.w")
+    dlr_agent = HexAgent(board_size=7, batch_size=32, learning_rate=3, max_num_of_data=5000)
+    # dlr_agent.load_weight("7x7_something.w")
     #dlr_agent.save_dataset()
-    #dlr_agent.load_dataset("7x7_prob")
-    #dlr_agent.single_training(300)
-    #dlr_agent.trainer.plot_loss()
-    #dlr_agent.evaluate_with_random_model(matches=1000)
+    dlr_agent.load_dataset("7x7_2023_03_28_21_56_13")
+    dlr_agent.single_training(300)
+    dlr_agent.trainer.plot_loss()
+    #dlr_agent.evaluate_with_random_model(matches=100)
     #dlr_agent.train_while_playing(epochs=100, time_limit=5, simulations_limit=2000)
-    #dlr_agent.evaluate_model()
-    #dlr_agent.evaluate_with_random_model(matches=1000)
+    # dlr_agent.evaluate_model()
     #dlr_agent.manually_evaluation()
     #dlr_agent.save_weight()
 
-    a_game = HexGame(7)
-    human = HumanAget()
-    a_game.play_a_match(human, dlr_agent, wait=0)
-    #vi = Visualizer(4)
+    #a_game = HexGame(7)
+    #human = HumanAget()
+    #a_game.play_a_match(human, MCTSAget(time=10, max_num_of_simulations=2000), wait=0)
+    vi = Visualizer(7)
     #vi.show_dataset(dlr_agent.dataset)
-    #vi.visual_evaluation(dlr_agent.dataset, dlr_agent.trainer)
+    vi.visual_evaluation(dlr_agent.dataset, dlr_agent.trainer)
 
 """
 The sum of probability on free cell was 0 but I'm smart so I select a random move:

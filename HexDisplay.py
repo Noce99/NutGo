@@ -4,6 +4,7 @@ import torch
 from screeninfo import get_monitors
 from pygame.locals import *
 from math import sin, cos, pi, sqrt
+from Utils import my_argmax
 
 
 class Visualizer:
@@ -121,13 +122,13 @@ class Visualizer:
         font = pygame.font.SysFont(sys_font, 30)
         cx = self.window_size // 2
         cy = self.window_size * 0.05
-        i_max = torch.argmax(probability)
+        r_max, c_max = my_argmax(probability)
         for r in range(self.board_size):
             for c in range(self.board_size):
-                if r * self.board_size + c == i_max:
-                    text = font.render(f"{float(probability[r * self.board_size + c]):.2f}", True, red, blue)
+                if r == r_max and c == c_max:
+                    text = font.render(f"{float(probability[r, c]):.2f}", True, red, blue)
                 else:
-                    text = font.render(f"{float(probability[r * self.board_size + c]):.2f}", True, green, blue)
+                    text = font.render(f"{float(probability[r, c]):.2f}", True, green, blue)
                 text_rect = text.get_rect()
                 text_rect.center = (self.circle_radius * 3 + cx + c * self.line_size * cos(pi / 3),
                                     offset + cy + c * self.line_size * sin(pi / 3))
@@ -180,21 +181,17 @@ class Visualizer:
 
     def show_dataset(self, dataset):
         for i in range(len(dataset)):
-            state = dataset[i][0][0]
-            result = dataset[i][1][0]
+            player = dataset[i][0][0][0, 0]
+            pieces = dataset[i][0][3]
+            result = dataset[i][1]
             hex_state = [[None for _ in range(self.board_size)] for _ in range(self.board_size)]
-            r = 0
-            c = 0
-            for ii, element in enumerate(state[1:]):
-                if element == 1:
-                    hex_state[r][c] = (True, None)
-                elif element == -1:
-                    hex_state[r][c] = (False, None)
-                c += 1
-                if (ii + 1) % self.board_size == 0:
-                    r += 1
-                    c = 0
-            if state[0] == 1:
+            for r in range(self.board_size):
+                for c in range(self.board_size):
+                    if pieces[r, c] == 1:
+                        hex_state[r][c] = (True, None)
+                    elif pieces[r, c] == -1:
+                        hex_state[r][c] = (False, None)
+            if player == 1:
                 self.print_board(hex_state, True)
             else:
                 self.print_board(hex_state, False)
@@ -203,30 +200,24 @@ class Visualizer:
 
     def visual_evaluation(self, dataset, nn):
         for i in range(len(dataset)):
-            for j in range(dataset[i][0].shape[0]):
-                state = dataset[i][0][j]
-                result = dataset[i][1][j]
-                hex_state = [[None for _ in range(self.board_size)] for _ in range(self.board_size)]
-                r = 0
-                c = 0
-                for ii, element in enumerate(state[1:]):
-                    if element == 1:
+            player = dataset[i][0][0][0, 0]
+            pieces = dataset[i][0][3]
+            result = dataset[i][1]
+            hex_state = [[None for _ in range(self.board_size)] for _ in range(self.board_size)]
+            for r in range(self.board_size):
+                for c in range(self.board_size):
+                    if pieces[r, c] == 1:
                         hex_state[r][c] = (True, None)
-                    elif element == -1:
+                    elif pieces[r, c] == -1:
                         hex_state[r][c] = (False, None)
-                    c += 1
-                    if (ii + 1) % self.board_size == 0:
-                        r += 1
-                        c = 0
-                if state[0] == 1:
-                    self.print_board(hex_state, True)
-                else:
-                    self.print_board(hex_state, False)
-                self.print_probability(result)
-                predicted_tensor = nn.predict(state[None, :])
-                self.print_probability(predicted_tensor, offset=30)
-                self.wait_until_click()
-            break
+            if player == 1:
+                self.print_board(hex_state, True)
+            else:
+                self.print_board(hex_state, False)
+            self.print_probability(result)
+            predicted_tensor = nn.predict(dataset[i][0])
+            self.print_probability(predicted_tensor, offset=30)
+            self.wait_until_click()
 
 """
 sample_board = [[None for _ in range(10)] for _ in range(10)]
