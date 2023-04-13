@@ -28,7 +28,7 @@ class HexConvolutionalModel(nn.Module):
         super().__init__()
         self.next_move_finder = nn.Sequential(
             # 2 channel because one is with the probability and the second one is with first_player
-            nn.Conv2d(in_channels=4, out_channels=8, kernel_size=(3, 3), padding=0),
+            nn.Conv2d(in_channels=3, out_channels=8, kernel_size=(3, 3), padding=0),
             nn.BatchNorm2d(8),
             nn.ReLU(),
             nn.Dropout(0.05),
@@ -152,7 +152,7 @@ class Trainer:
     def predict(self, tensor_state_value):
         prediction = self.model.forward(tensor_state_value[None, :])[0, 0]
 
-        pieces = tensor_state_value[3]
+        pieces = tensor_state_value[2]
         board_size = pieces.shape[0]
 
         sum_prediction = torch.sum(prediction[pieces == 0])

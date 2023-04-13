@@ -15,72 +15,66 @@ class HexGame:
     def __init__(self, board_size):
         self.board_size = board_size
 
-    def play_a_match(self, agent1, agent2, wait=0):
+    def play_a_match(self, agent1, agent2, wait=False):
         vi = Visualizer(self.board_size)
-        start_state = HexNode(True, [[None for _ in range(self.board_size)] for _ in range(self.board_size)], None)
+        start_state = HexNode(first_player=True,
+                              state_value=[[None for _ in range(self.board_size)] for _ in range(self.board_size)],
+                              default_policy=None,
+                              probability_of_random_move=0)
         state = start_state
         while True:
-            r, c, probability = agent1.get_move(vi, state.state_value, state.is_first_player())
-            state = HexNode(first_player=not state.is_first_player(),
-                            state_value=state.state_value[:],
-                            added_piece=(r, c))
-            state.add_piece(r, c, not state.is_first_player())  # This not is ok!
-            time.sleep(wait)
+            r, c, probability, best_child = agent1.get_move(vi, state, state.is_first_player())
+            state = best_child
+
             if state.final_state:
-                print("Game Finished!")
                 if state.winner_first_player:
-                    print("Red Won!")
-                    return 1
+                    print("Red Won!", end=" ")
                 else:
-                    print("Blue Won!")
-                    return 2
-                vi.finished_game(state.state_value)
-                while True:
-                    pass
+                    print("Blue Won!", end=" ")
+                break
             vi.print_board(state.state_value, state.first_player)
             if probability is not None:
                 vi.print_probability(probability)
-            r, c, probability = agent2.get_move(vi, state.state_value, state.is_first_player())
-            state = HexNode(first_player=not state.is_first_player(),
-                            state_value=state.state_value[:],
-                            added_piece=(r, c))
-            state.add_piece(r, c, not state.is_first_player())  # This not is ok!
-            time.sleep(wait)
+            if wait:
+                vi.wait_until_click()
+            r, c, probability, best_child = agent2.get_move(vi, state, state.is_first_player())
+            state = best_child
+
             if state.final_state:
-                print("Game Finished!")
                 if state.winner_first_player:
-                    print("Red Won!")
-                    return 1
+                    print("Red Won!", end=" ")
                 else:
-                    print("Blue Won!")
-                    return 2
-                vi.finished_game(state.state_value)
-                while True:
-                    pass
+                    print("Blue Won!", end=" ")
+                break
             vi.print_board(state.state_value, state.first_player)
             if probability is not None:
                 vi.print_probability(probability, offset=30)
+            if wait:
+                vi.wait_until_click()
 
 
 if __name__ == "__main__":
     dlr_agent = HexAgent(board_size=7, batch_size=32, learning_rate=3, max_num_of_data=5000)
-    # dlr_agent.load_weight("7x7_something.w")
+    dlr_agent.load_weight("7x7_Nut_v_2_0")
+    #dlr_agent.evaluate_model()
     #dlr_agent.save_dataset()
-    dlr_agent.load_dataset("7x7_2023_03_28_21_56_13")
-    dlr_agent.single_training(300)
-    dlr_agent.trainer.plot_loss()
+    #dlr_agent.load_dataset("7x7_2023_04_07_23_09_42")
+    #dlr_agent.single_training(300)
+    #dlr_agent.trainer.plot_loss()
     #dlr_agent.evaluate_with_random_model(matches=100)
-    #dlr_agent.train_while_playing(epochs=100, time_limit=5, simulations_limit=2000)
+    dlr_agent.train_while_playing(epochs=100, time_limit=20, simulations_limit=2000, num_of_games_before_evaluation=10,
+                                  prob_of_random_move=0.5)
     # dlr_agent.evaluate_model()
     #dlr_agent.manually_evaluation()
     #dlr_agent.save_weight()
 
     #a_game = HexGame(7)
     #human = HumanAget()
-    #a_game.play_a_match(human, MCTSAget(time=10, max_num_of_simulations=2000), wait=0)
-    vi = Visualizer(7)
+    #a_game.play_a_match(dlr_agent, human, wait=False)
+    #a_game.play_a_match(human, MCTSAget(time=1, max_num_of_simulations=2000), wait=0)
+    #vi = Visualizer(7)
     #vi.show_dataset(dlr_agent.dataset)
-    vi.visual_evaluation(dlr_agent.dataset, dlr_agent.trainer)
+    #vi.visual_evaluation(dlr_agent.dataset, dlr_agent.trainer)
 
 """
 The sum of probability on free cell was 0 but I'm smart so I select a random move:
