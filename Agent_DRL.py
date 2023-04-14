@@ -32,25 +32,33 @@ class HexAgent(Agent):
         self.bosses_time_limit = 15
 
     def train_while_playing(self, epochs, time_limit, simulations_limit, prob_of_random_move,
-                            num_of_games_before_evaluation):
+                            num_of_games_before_evaluation, do_evaluation=True, save_dataset=True,
+                            max_num_of_games=None):
         start = time.time()
         x_time = [0]
-        y_evaluations = [0] #self.evaluate_model()]
+        y_evaluations = []
+        if do_evaluation:
+            y_evaluations.append(self.evaluate_model())
         num_of_games = 0
         while True:
             self.training_session(epochs, time_limit, simulations_limit, num_of_games=num_of_games_before_evaluation,
                                   prob_of_random_move=prob_of_random_move)
-            score = self.evaluate_model()
-            num_of_games += 10
-            if score > max(y_evaluations):
-                self.save_weight()
-            y_evaluations.append(score)
+            num_of_games += num_of_games_before_evaluation
             now = time.time() - start
-            x_time.append(now)
-            plt.plot(x_time, y_evaluations)
-            plt.savefig(f'evaluations/eval_{int(now)}.png')
+            if do_evaluation:
+                score = self.evaluate_model()
+                if score > max(y_evaluations):
+                    self.save_weight()
+                y_evaluations.append(score)
+                x_time.append(now)
+                plt.plot(x_time, y_evaluations)
+                plt.savefig(f'evaluations/eval_{int(now)}.png')
+            if save_dataset:
+                self.save_dataset()
             print(f"DONE {num_of_games} in {now} seconds!")
-            self.save_dataset()
+            if max_num_of_games is not None:
+                if max_num_of_games <= num_of_games:
+                    break
 
     def training_session(self, epochs, time_limit, simulations_limit, num_of_games, prob_of_random_move):
         red_was_the_winner = 0
@@ -193,22 +201,22 @@ class HexAgent(Agent):
             data_y = torch.cat((data_y, dataset[i][1][None, :]), 0)
         return data_x, data_y
 
-    def save_weight(self):
-        if not os.path.exists("./weights"):
-            os.mkdir("./weights")
-        current_time = datetime.now()
-        torch.save(self.model_fp.state_dict(), f"./weights/{self.board_size}x{self.board_size}_"
-                                               f"{current_time.strftime('%Y_%m_%d_%H_%M_%S')}_P1.w")
-        torch.save(self.model_sp.state_dict(), f"./weights/{self.board_size}x{self.board_size}_"
-                                               f"{current_time.strftime('%Y_%m_%d_%H_%M_%S')}_P2.w")
+    def save_weight(self, folder="./weights", name=None):
+        if not os.path.exists(folder):
+            os.mkdir(folder)
+        if name is None:
+            current_time = datetime.now()
+            name = current_time.strftime('%Y_%m_%d_%H_%M_%S')
+        torch.save(self.model_fp.state_dict(), f"{folder}/{self.board_size}x{self.board_size}_{name}_P1.w")
+        torch.save(self.model_sp.state_dict(), f"{folder}/{self.board_size}x{self.board_size}_{name}_P2.w")
 
-    def load_weight(self, weight_name):
-        if os.path.exists("./weights/" + weight_name + "_P1.w") and os.path.exists(
-                "./weights/" + weight_name + "_P2.w"):
-            self.model_fp.load_state_dict(torch.load("./weights/" + weight_name + "_P1.w"))
-            self.model_sp.load_state_dict(torch.load("./weights/" + weight_name + "_P2.w"))
+    def load_weight(self, weight_name, folder="./weights"):
+        if os.path.exists(folder + "/" + weight_name + "_P1.w") and os.path.exists(
+                folder + "/" + weight_name + "_P2.w"):
+            self.model_fp.load_state_dict(torch.load(folder + "/" + weight_name + "_P1.w"))
+            self.model_sp.load_state_dict(torch.load(folder + "/" + weight_name + "_P2.w"))
         else:
-            print(f"[{'./weights/' + weight_name + '_P1.w'}, {'./weights/' + weight_name + '_P2.w'}] doesn't exists!")
+            print(f"[{folder + '/' + weight_name + '_P1.w'}, {folder + '/' + weight_name + '_P2.w'}] doesn't exists!")
             exit()
 
     def get_a_move_from_nn(self, state, first_player):
@@ -501,40 +509,87 @@ def get_child_selected_by_nn(row, col, state):
 
 
 def find_obvious_moves(tensor_state_value, first_player):
-    def check_if_near_to_connected(rr, cc):
+    def check_if_near_to_connected(rr, cc, tensor_index_to_check):
         near_a_minus_1 = False
         near_a_plus_1 = False
-        if first_player:
-            tensor_index_to_check = 0
-        else:
-            tensor_index_to_check = 1
-        if r - 1 >= 0:
-            if tensor_state_value[tensor_index_to_check, r - 1, c] == -1:
+        if rr - 1 >= 0:
+            if tensor_state_value[tensor_index_to_check, rr - 1, cc] == -1:
                 near_a_minus_1 = True
-            elif tensor_state_value[tensor_index_to_check, r - 1, c] == 1:
+            elif tensor_state_value[tensor_index_to_check, rr - 1, cc] == 1:
                 near_a_plus_1 = True
-        if r + 1 < board_size:
-            if tensor_state_value[tensor_index_to_check, r + 1, c] == -1:
+        if rr + 1 < board_size:
+            if tensor_state_value[tensor_index_to_check, rr + 1, cc] == -1:
                 near_a_minus_1 = True
-            elif tensor_state_value[tensor_index_to_check, r + 1, c] == 1:
+            elif tensor_state_value[tensor_index_to_check, rr + 1, cc] == 1:
                 near_a_plus_1 = True
-        if c - 1 >= 0:
-            if tensor_state_value[tensor_index_to_check, r, c - 1] == -1:
+        if cc - 1 >= 0:
+            if tensor_state_value[tensor_index_to_check, rr, cc - 1] == -1:
                 near_a_minus_1 = True
-            elif tensor_state_value[tensor_index_to_check, r, c - 1] == 1:
+            elif tensor_state_value[tensor_index_to_check, rr, cc - 1] == 1:
                 near_a_plus_1 = True
-        if c + 1 < board_size:
-            if tensor_state_value[tensor_index_to_check, r, c + 1] == -1:
+        if cc + 1 < board_size:
+            if tensor_state_value[tensor_index_to_check, rr, cc + 1] == -1:
                 near_a_minus_1 = True
-            elif tensor_state_value[tensor_index_to_check, r, c + 1] == 1:
+            elif tensor_state_value[tensor_index_to_check, rr, cc + 1] == 1:
                 near_a_plus_1 = True
+        if rr - 1 >= 0 and cc + 1 < board_size:
+            if tensor_state_value[tensor_index_to_check, rr - 1, cc + 1] == -1:
+                near_a_minus_1 = True
+            elif tensor_state_value[tensor_index_to_check, rr - 1, cc + 1] == 1:
+                near_a_plus_1 = True
+        if rr + 1 < board_size and cc - 1 >= 0:
+            if tensor_state_value[tensor_index_to_check, rr + 1, cc - 1] == -1:
+                near_a_minus_1 = True
+            elif tensor_state_value[tensor_index_to_check, rr + 1, cc - 1] == 1:
+                near_a_plus_1 = True
+        if (tensor_index_to_check == 0 and rr == board_size - 1) or\
+           (tensor_index_to_check == 1 and cc == board_size - 1):
+            near_a_minus_1 = True
+        if (tensor_index_to_check == 0 and rr == 0) or\
+           (tensor_index_to_check == 1 and cc == 0):
+            near_a_plus_1 = True
         return near_a_minus_1, near_a_plus_1
+
     board_size = tensor_state_value.shape[-1]
+    empty_board = True
+    other_will_win_r = None
+    other_will_win_c = None
+    """
+    for r in range(board_size):
+        for c in range(board_size):
+            print(int(tensor_state_value[1, r, c]), end=" ")
+        print()
+    print("$"*120)
+    """
     for r in range(board_size):
         for c in range(board_size):
             if tensor_state_value[2, r, c] == 0:
                 # Not a piece there!
-                near_a_minus_1, near_a_plus_1 = check_if_near_to_connected(r, c)
-                if near_a_minus_1 and near_a_plus_1:
+                if first_player:
+                    near_a_minus_1_me, near_a_plus_1_me = check_if_near_to_connected(r, c, 0)
+                    near_a_minus_1_other, near_a_plus_1_other = check_if_near_to_connected(r, c, 1)
+                else:
+                    near_a_minus_1_me, near_a_plus_1_me = check_if_near_to_connected(r, c, 1)
+                    near_a_minus_1_other, near_a_plus_1_other = check_if_near_to_connected(r, c, 0)
+                """
+                if near_a_minus_1_me or near_a_plus_1_me or near_a_minus_1_other or near_a_plus_1_other:
+                    print(f"near_a_minus_1_me: {near_a_minus_1_me}, near_a_plus_1_me: {near_a_plus_1_me}")
+                    print(f"near_a_minus_1_other: {near_a_minus_1_other}, near_a_plus_1_other: {near_a_plus_1_other}")
+                    print(f"{r} {c}")
+                """
+                if near_a_minus_1_me and near_a_plus_1_me:
+                    # print("Obv you will win move!")
                     return r, c
+                if near_a_minus_1_other and near_a_plus_1_other:
+                    # print("Obv the other will win move!")
+                    # print(f"{r}, {c}")
+                    other_will_win_r = r
+                    other_will_win_c = c
+            else:
+                empty_board = False
+    if empty_board:
+        # print("Obv starting move!")
+        return board_size // 2, board_size // 2
+    if other_will_win_r is not None:
+        return other_will_win_r, other_will_win_c
     return None, None

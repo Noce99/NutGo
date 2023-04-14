@@ -15,8 +15,11 @@ class HexGame:
     def __init__(self, board_size):
         self.board_size = board_size
 
-    def play_a_match(self, agent1, agent2, wait=False):
-        vi = Visualizer(self.board_size)
+    def play_a_match(self, agent1, agent2, wait=False, verbose=True, visualizer=True):
+        if visualizer:
+            vi = Visualizer(self.board_size)
+        else:
+            vi = None
         start_state = HexNode(first_player=True,
                               state_value=[[None for _ in range(self.board_size)] for _ in range(self.board_size)],
                               default_policy=None,
@@ -28,42 +31,50 @@ class HexGame:
 
             if state.final_state:
                 if state.winner_first_player:
-                    print("Red Won!", end=" ")
+                    if verbose:
+                        print("Red Won!", end=" ")
+                    return True
                 else:
-                    print("Blue Won!", end=" ")
-                break
-            vi.print_board(state.state_value, state.first_player)
-            if probability is not None:
-                vi.print_probability(probability)
-            if wait:
-                vi.wait_until_click()
+                    if verbose:
+                        print("Blue Won!", end=" ")
+                    return False
+            if visualizer:
+                vi.print_board(state.state_value, state.first_player)
+                if probability is not None:
+                    vi.print_probability(probability)
+                if wait:
+                    vi.wait_until_click()
             r, c, probability, best_child = agent2.get_move(vi, state, state.is_first_player())
             state = best_child
 
             if state.final_state:
                 if state.winner_first_player:
-                    print("Red Won!", end=" ")
+                    if verbose:
+                        print("Red Won!", end=" ")
+                    return True
                 else:
-                    print("Blue Won!", end=" ")
-                break
-            vi.print_board(state.state_value, state.first_player)
-            if probability is not None:
-                vi.print_probability(probability, offset=30)
-            if wait:
-                vi.wait_until_click()
+                    if verbose:
+                        print("Blue Won!", end=" ")
+                    return False
+            if visualizer:
+                vi.print_board(state.state_value, state.first_player)
+                if probability is not None:
+                    vi.print_probability(probability, offset=30)
+                if wait:
+                    vi.wait_until_click()
 
 
 if __name__ == "__main__":
     dlr_agent = HexAgent(board_size=7, batch_size=32, learning_rate=3, max_num_of_data=5000)
     dlr_agent.load_weight("7x7_Nut_v_2_0")
-    #dlr_agent.evaluate_model()
+    dlr_agent.evaluate_model()
     #dlr_agent.save_dataset()
     #dlr_agent.load_dataset("7x7_2023_04_07_23_09_42")
     #dlr_agent.single_training(300)
     #dlr_agent.trainer.plot_loss()
     #dlr_agent.evaluate_with_random_model(matches=100)
-    dlr_agent.train_while_playing(epochs=100, time_limit=20, simulations_limit=2000, num_of_games_before_evaluation=10,
-                                  prob_of_random_move=0.5)
+    #dlr_agent.train_while_playing(epochs=100, time_limit=20, simulations_limit=2000, num_of_games_before_evaluation=10,
+    #                              prob_of_random_move=0.5, do_evaluation=True, save_dataset=True, max_num_of_games=None)
     # dlr_agent.evaluate_model()
     #dlr_agent.manually_evaluation()
     #dlr_agent.save_weight()

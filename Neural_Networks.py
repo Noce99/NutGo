@@ -26,31 +26,42 @@ class HexConvolutionalModel(nn.Module):
     def __init__(self, board_size):
         self.board_size = board_size
         super().__init__()
-        self.next_move_finder = nn.Sequential(
-            # 2 channel because one is with the probability and the second one is with first_player
-            nn.Conv2d(in_channels=3, out_channels=8, kernel_size=(3, 3), padding=0),
-            nn.BatchNorm2d(8),
-            nn.ReLU(),
-            nn.Dropout(0.05),
-            nn.Conv2d(in_channels=8, out_channels=16, kernel_size=(3, 3), padding=0),
-            nn.BatchNorm2d(16),
-            nn.ReLU(),
-            nn.Dropout(0.05),
-            # To be DONE!
-            nn.ConvTranspose2d(in_channels=16, out_channels=8, kernel_size=(3, 3), padding=0),
-            nn.BatchNorm2d(8),
-            nn.ReLU(),
-            nn.Dropout(0.05),
-            nn.ConvTranspose2d(in_channels=8, out_channels=1, kernel_size=(3, 3), padding=0),
-            nn.ReLU(),
-            # nn.Softmax(1)
-        )
+        if self.board_size < 6:
+            self.next_move_finder = nn.Sequential(
+                nn.Linear(self.board_size*self.board_size, 64),
+                nn.ReLU(),
+                nn.Linear(64, self.board_size * self.board_size),
+                nn.Softmax(dim=1)
+            )
+        else:
+            self.next_move_finder = nn.Sequential(
+                nn.Conv2d(in_channels=3, out_channels=8, kernel_size=(3, 3), padding=0),
+                nn.BatchNorm2d(8),
+                nn.ReLU(),
+                nn.Dropout(0.05),
+                nn.Conv2d(in_channels=8, out_channels=16, kernel_size=(3, 3), padding=0),
+                nn.BatchNorm2d(16),
+                nn.ReLU(),
+                nn.Dropout(0.05),
+                nn.ConvTranspose2d(in_channels=16, out_channels=8, kernel_size=(3, 3), padding=0),
+                nn.BatchNorm2d(8),
+                nn.ReLU(),
+                nn.Dropout(0.05),
+                nn.ConvTranspose2d(in_channels=8, out_channels=1, kernel_size=(3, 3), padding=0),
+                nn.ReLU(),
+            )
         for p_name, p in self.named_parameters():
             p.data = torch.randn(p.shape) * 0.2  # Random weight initialization
             p.requires_grad = True  # Not Freeze
 
     def forward(self, x):
+        if self.board_size < 6:
+            x = x[:, 2, :, :]
+            x = torch.flatten(x, 1)
         out = self.next_move_finder(x)
+        if self.board_size < 6:
+            out = torch.reshape(out, (out.shape[0], self.board_size, self.board_size))
+            out = out[:, None, :, :]
         return out
 
 
