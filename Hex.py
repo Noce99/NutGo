@@ -1,6 +1,4 @@
 import copy
-
-from HexDisplay import Visualizer
 from monte_carlo_tree_search import Node
 import random
 

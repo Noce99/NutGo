@@ -1,4 +1,6 @@
 import time
+from collections import OrderedDict
+
 import torch
 from torch import nn
 import random
@@ -23,16 +25,26 @@ def count_parameters(model):
 
 class HexConvolutionalModel(nn.Module):
 
-    def __init__(self, board_size):
+    def __init__(self, board_size, hidden_layers=0, neuron_per_layers=64, activation_function="RELU"):
         self.board_size = board_size
         super().__init__()
+        activation_functions = {"linear": None, "sigmoid": nn.Sigmoid(), "tanh": nn.Tanh(), "RELU": nn.ReLU()}
         if self.board_size < 6:
-            self.next_move_finder = nn.Sequential(
+            layers = [("0", nn.Linear(self.board_size * self.board_size, neuron_per_layers))]
+            for hl in range(hidden_layers):
+                layers.append((f"activation_{hl}", activation_functions[activation_function]))
+                layers.append((f"hl_{hl}", nn.Linear(neuron_per_layers, neuron_per_layers)))
+            layers.append(("1", activation_functions[activation_function]))
+            layers.append(("2", nn.Linear(neuron_per_layers, self.board_size * self.board_size)))
+            layers.append(("3", nn.Softmax(dim=1)))
+            self.next_move_finder = nn.Sequential(OrderedDict(layers))
+            """
                 nn.Linear(self.board_size*self.board_size, 64),
                 nn.ReLU(),
                 nn.Linear(64, self.board_size * self.board_size),
                 nn.Softmax(dim=1)
             )
+            """
         else:
             self.next_move_finder = nn.Sequential(
                 nn.Conv2d(in_channels=3, out_channels=8, kernel_size=(3, 3), padding=0),
@@ -82,7 +94,13 @@ class Trainer:
     def __init__(self,
                  batch_size: int,
                  learning_rate: float,
-                 model: torch.nn.Module):
+                 model: torch.nn.Module,
+                 optimizer="SGD"):
+
+        optimizers = {"SGD": torch.optim.SGD,
+                      "Adagrad": torch.optim.Adagrad,
+                      "RMSProp": torch.optim.RMSprop,
+                      "Adam": torch.optim.Adam}
 
         self.batch_size = batch_size
         self.learning_rate = learning_rate
@@ -90,11 +108,11 @@ class Trainer:
         self.loss_criterion = torch.nn.CrossEntropyLoss()
         self.model = model
         self.model = self.model
-        print(self.model)
+        # print(self.model)
 
         # Define our optimizer. SGD = Stochastic Gradient Descent
-        self.optimizer = torch.optim.SGD(self.model.parameters(),
-                                         self.learning_rate)
+        self.optimizer = optimizers[optimizer](self.model.parameters(),
+                                               self.learning_rate)
 
         # Tracking loss
         self.train_history = []
@@ -110,14 +128,15 @@ class Trainer:
         self.optimizer.zero_grad()
 
         # TESTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT
+        """
         for i in range(y_batch.shape[0]):
             r_max, c_max = my_argmax(y_batch[i])
             y_batch[i] = torch.zeros_like(y_batch[i])
             y_batch[i, r_max, c_max] = 1.0
-
+        """
 
         # Perform the forward pass
-        predictions = self.model(x_batch)
+        predictions = self.model.forward(x_batch)
         predictions = predictions[:, 0, :, :]
 
         ###################################################################
@@ -193,9 +212,3 @@ class Trainer:
     def plot_loss(self):
         plt.plot(list(range(len(self.train_history))), self.train_history)
         plt.show()
-
-
-if __name__ == "__main__":
-    hex_conv = HexConvolutionalModel(7)
-    print(hex_conv.forward(torch.ones(32, 50)).shape)
-    count_parameters(hex_conv)

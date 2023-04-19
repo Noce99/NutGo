@@ -198,6 +198,7 @@ class Visualizer:
             self.print_probability(result)
             self.wait_until_click()
 
+    """
     def visual_evaluation(self, dataset, nn):
         for i in range(len(dataset)):
             player = dataset[i][0][0][0, 0]
@@ -218,6 +219,8 @@ class Visualizer:
             predicted_tensor = nn.predict(dataset[i][0])
             self.print_probability(predicted_tensor, offset=30)
             self.wait_until_click()
+    """
+
 
 """
 sample_board = [[None for _ in range(10)] for _ in range(10)]

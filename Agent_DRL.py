@@ -16,19 +16,19 @@ from Utils import my_argmax
 
 class HexAgent(Agent):
 
-    def __init__(self, board_size, batch_size, learning_rate, max_num_of_data):
+    def __init__(self, board_size, batch_size, learning_rate, max_num_of_data, optimizer="SGD",
+                 hidden_layers=0, neuron_per_layers=64, activation_function="RELU"):
         self.board_size = board_size
-        self.dataset_fp = []
-        self.dataset_sp = []
+        self.dataset = []
 
         self.batch_size = batch_size
         self.learning_rate = learning_rate
         self.max_num_of_data = max_num_of_data
-        self.model_fp = HexConvolutionalModel(board_size)
-        self.model_sp = HexConvolutionalModel(board_size)
-        self.trainer_fp = Trainer(self.batch_size, self.learning_rate, self.model_fp)
-        self.trainer_sp = Trainer(self.batch_size, self.learning_rate, self.model_sp)
-        self.bosses = [50]
+        self.model = HexConvolutionalModel(board_size, hidden_layers=hidden_layers, neuron_per_layers=neuron_per_layers,
+                                           activation_function=activation_function)
+        self.trainer = Trainer(self.batch_size, self.learning_rate, self.model, optimizer)
+
+        self.bosses = [100]
         self.bosses_time_limit = 15
 
     def train_while_playing(self, epochs, time_limit, simulations_limit, prob_of_random_move,
@@ -47,12 +47,11 @@ class HexAgent(Agent):
             now = time.time() - start
             if do_evaluation:
                 score = self.evaluate_model()
-                if score > max(y_evaluations):
-                    self.save_weight()
                 y_evaluations.append(score)
                 x_time.append(now)
                 plt.plot(x_time, y_evaluations)
                 plt.savefig(f'evaluations/eval_{int(now)}.png')
+            self.save_weight()
             if save_dataset:
                 self.save_dataset()
             print(f"DONE {num_of_games} in {now} seconds!")
@@ -64,6 +63,7 @@ class HexAgent(Agent):
         red_was_the_winner = 0
         blue_was_the_winner = 0
         print(f"Start training for {num_of_games} games with {prob_of_random_move} prob_of_random_move.")
+        time.sleep(0.1)
         training_tqdm = tqdm(range(0, num_of_games), unit=" Game", desc="Training")
         for nog in training_tqdm:
             start_state = HexNode(first_player=True,
@@ -81,10 +81,10 @@ class HexAgent(Agent):
 
                 if state.final_state:
                     if state.winner_first_player:
-                        print("Red Won!", end=" ")
+                        # print("Red Won!", end=" ")
                         red_was_the_winner += 1
                     else:
-                        print("Blue Won!", end=" ")
+                        # print("Blue Won!", end=" ")
                         blue_was_the_winner += 1
                     break
                 r, c, probability, best_child = self.get_a_move_from_mcts(state,
@@ -95,31 +95,26 @@ class HexAgent(Agent):
 
                 if state.final_state:
                     if state.winner_first_player:
-                        print("Red Won!", end=" ")
+                        # print("Red Won!", end=" ")
                         red_was_the_winner += 1
                     else:
-                        print("Blue Won!", end=" ")
+                        # print("Blue Won!", end=" ")
                         blue_was_the_winner += 1
                     break
             self.just_train(epochs)
-            print(f"{nog + 1}/{num_of_games} game finished [{len(self.dataset_fp)}, {len(self.dataset_sp)}] data.")
-        print(f"Red/Blue wins -> {red_was_the_winner}/{blue_was_the_winner}")
+            # print(f"{nog + 1}/{num_of_games} game finished {len(self.dataset)}} data.")
+        # print(f"Red/Blue wins -> {red_was_the_winner}/{blue_was_the_winner}")
 
     def just_train(self, epochs, datasets=None):
         if datasets is None:
-            datasets = (self.dataset_fp, self.dataset_sp)
-        batches_fp = [self.get_a_batch_of_data(dataset=datasets[0]) for _ in range(4)]
-        batches_sp = [self.get_a_batch_of_data(dataset=datasets[1]) for _ in range(4)]
-        self.trainer_fp.train(epochs, batches_fp)
-        self.trainer_sp.train(epochs, batches_sp)
+            datasets = self.dataset
+        batches = [self.get_a_batch_of_data(dataset=datasets) for _ in range(4)]
+        self.trainer.train(epochs, batches)
 
+    """
     def single_training(self, epochs, first_player):
-        if first_player:
-            dataset = self.dataset_fp
-            trainer = self.trainer_fp
-        else:
-            dataset = self.dataset_sp
-            trainer = self.trainer_sp
+        dataset = self.dataset
+        trainer = self.trainer
         train = dataset[:int(0.9 * len(dataset))]
         test = dataset[int(0.9 * len(dataset)):]
         for i in range(epochs // 10):
@@ -128,14 +123,12 @@ class HexAgent(Agent):
         self.plot_accuracy(dataset=train, trainer=trainer)
         print("Test:")
         self.plot_accuracy(dataset=test, trainer=trainer)
+    """
 
     def add_data_to_dataset(self, state, first_player, probability):
         data_x = from_state_value_to_tensor(state, first_player)
         data_y = probability
-        if first_player:
-            dataset = self.dataset_fp
-        else:
-            dataset = self.dataset_sp
+        dataset = self.dataset
         if torch.sum(data_y) > 0.1:
             dataset.append((data_x, data_y))
             if len(dataset) > self.max_num_of_data:
@@ -154,17 +147,12 @@ class HexAgent(Agent):
             for d_x, d_y in dataset[1:]:
                 data_x = torch.cat((data_x, d_x[None, :]), 0)
                 data_y = torch.cat((data_y, d_y[None, :]), 0)
-            if first_player:
-                player_string = "_P1"
-            else:
-                player_string = "_P2"
             torch.save(data_x, f"./datasets/{board_size}x{board_size}_"
-                               f"{current_time.strftime('%Y_%m_%d_%H_%M_%S')}{player_string}.X")
+                               f"{current_time.strftime('%Y_%m_%d_%H_%M_%S')}.X")
             torch.save(data_y, f"./datasets/{board_size}x{board_size}_"
-                               f"{current_time.strftime('%Y_%m_%d_%H_%M_%S')}{player_string}.Y")
+                               f"{current_time.strftime('%Y_%m_%d_%H_%M_%S')}.Y")
 
-        save_single_dataset(self.dataset_fp, self.board_size, True)
-        save_single_dataset(self.dataset_sp, self.board_size, False)
+        save_single_dataset(self.dataset, self.board_size, True)
 
     def load_dataset(self, out_dataset_name):
         def load_single_dataset(dataset_name):
@@ -182,15 +170,14 @@ class HexAgent(Agent):
                 dataset = []
                 for i in range(num_of_data):
                     dataset.append((data_x[i, :], data_y[i, :]))
-                self.print_how_much_data()
             elif not os.path.exists("./datasets/" + dataset_name + ".X"):
                 print(f"[{'./datasets/' + dataset_name + '.X'}] doesn't exists!")
             elif not os.path.exists("./datasets/" + dataset_name + ".Y"):
                 print(f"[{'./datasets/' + dataset_name + '.Y'}] doesn't exists!")
             return dataset
 
-        self.dataset_fp = load_single_dataset(f"{out_dataset_name}_P1")
-        self.dataset_sp = load_single_dataset(f"{out_dataset_name}_P2")
+        self.dataset = load_single_dataset(f"{out_dataset_name}")
+        self.print_how_much_data()
 
     def get_a_batch_of_data(self, dataset=None):
         random_index = [random.randrange(0, len(dataset)) for _ in range(self.batch_size)]
@@ -207,30 +194,54 @@ class HexAgent(Agent):
         if name is None:
             current_time = datetime.now()
             name = current_time.strftime('%Y_%m_%d_%H_%M_%S')
-        torch.save(self.model_fp.state_dict(), f"{folder}/{self.board_size}x{self.board_size}_{name}_P1.w")
-        torch.save(self.model_sp.state_dict(), f"{folder}/{self.board_size}x{self.board_size}_{name}_P2.w")
+        torch.save(self.model.state_dict(), f"{folder}/{self.board_size}x{self.board_size}_{name}.w")
 
     def load_weight(self, weight_name, folder="./weights"):
-        if os.path.exists(folder + "/" + weight_name + "_P1.w") and os.path.exists(
-                folder + "/" + weight_name + "_P2.w"):
-            self.model_fp.load_state_dict(torch.load(folder + "/" + weight_name + "_P1.w"))
-            self.model_sp.load_state_dict(torch.load(folder + "/" + weight_name + "_P2.w"))
+        if os.path.exists(folder + "/" + weight_name + ".w"):
+            self.model.load_state_dict(torch.load(folder + "/" + weight_name + ".w"))
         else:
-            print(f"[{folder + '/' + weight_name + '_P1.w'}, {folder + '/' + weight_name + '_P2.w'}] doesn't exists!")
+            print(f"{folder + '/' + weight_name + '.w'} doesn't exists!")
             exit()
 
-    def get_a_move_from_nn(self, state, first_player):
+    def get_a_move_from_nn(self, state, first_player, check_obvious_moves=False):
         tensor_state_value = from_state_value_to_tensor(state, first_player)
-        if first_player:
-            prediction = self.trainer_fp.predict(tensor_state_value)
-        else:
-            prediction = self.trainer_sp.predict(tensor_state_value)
+        if check_obvious_moves:
+            obv_r, obv_c = find_obvious_moves(tensor_state_value, first_player)
+            if obv_r is not None:
+                # print(f"Obviously: [{obv_r}, {obv_c}]")
+                return obv_r, obv_c, None
+        prediction = self.trainer.predict(tensor_state_value)
+
         selected_index = my_argmax(prediction)
-        obv_r, obv_c = find_obvious_moves(tensor_state_value, first_player)
-        if obv_r is not None:
-            # print(f"An obv move is: [{obv_r}, {obv_c}]")
-            return obv_r, obv_c, None
         return selected_index[0], selected_index[1], prediction
+
+        my_prediction = torch.clone(prediction)
+
+        best_moves = []
+        best_moves_values = []
+        for i in range(3):
+            selected_index = my_argmax(my_prediction)
+            if float(my_prediction[selected_index[0], selected_index[1]]) == 0:
+                break
+            best_moves.append(selected_index)
+            best_moves_values.append(float(my_prediction[selected_index[0], selected_index[1]]))
+            my_prediction[selected_index[0], selected_index[1]] = 0
+        """
+        print("@" * 120)
+        print(prediction)
+        print("#" * 120)
+        print(my_prediction)
+        print("@"*120)
+        """
+        the_sum = sum(best_moves_values)
+        for i in range(len(best_moves)):
+            best_moves_values[i] = best_moves_values[i] / the_sum
+        random_number = random.uniform(0, 1)
+        the_sum = 0
+        for i in range(len(best_moves)):
+            the_sum += best_moves_values[i]
+            if random_number < the_sum:
+                return best_moves[i][0], best_moves[i][1], prediction
 
     def get_a_move_from_mcts(self, state, time_limit, max_num_of_simulations=-1):
         my_mcts = MCTS(state, time_limit, max_num_of_simulations)
@@ -251,13 +262,16 @@ class HexAgent(Agent):
         return selected_index[0], selected_index[1], tensor_result, best_child
 
     def get_move(self, _, state, first_player):
-        r, c, probability = self.get_a_move_from_nn(state, first_player)
+        r, c, probability = self.get_a_move_from_nn(state, first_player, check_obvious_moves=False)
         best_child = get_child_selected_by_nn(r, c, state)
+        if best_child is None:
+            print(f"[{r}, {c}]")
         return r, c, probability, best_child
 
     def print_how_much_data(self):
-        print(f"I have [{len(self.dataset_fp)}, {len(self.dataset_sp)}] data!")
+        print(f"I have {len(self.dataset)} data!")
 
+    """
     @staticmethod
     def plot_accuracy(dataset=None, trainer=None):
         correct = 0
@@ -270,6 +284,7 @@ class HexAgent(Agent):
                 correct += 1
             n += 1
         print(f"Accuracy: {correct / n}")
+    """
 
     def play_a_game_with_mcts(self, mcts_is_first_player, time_limit, simulations_limit=-1, visualize=False):
         """
@@ -464,7 +479,10 @@ def from_state_value_to_tensor(state, first_player):
             if cell is not None:
                 if cell[0] is True:
                     # first player peace there
-                    pieces[r, c] = 1
+                    if first_player:
+                        pieces[r, c] = 1
+                    else:
+                        pieces[r, c] = -1
                     if cell[1] is True:
                         # Connected to the left (top) line
                         first_player_connection[r, c] = 1
@@ -473,7 +491,10 @@ def from_state_value_to_tensor(state, first_player):
                         first_player_connection[r, c] = -1
                 elif cell[0] is False:
                     # second player peace there
-                    pieces[r, c] = -1
+                    if first_player:
+                        pieces[r, c] = -1
+                    else:
+                        pieces[r, c] = 1
                     if cell[1] is True:
                         # Connected to the left (top) line
                         second_player_connection[r, c] = 1
@@ -481,8 +502,12 @@ def from_state_value_to_tensor(state, first_player):
                         # Connected to the right (bottom) line
                         second_player_connection[r, c] = -1
 
-    tensor_state_value = torch.cat((first_player_connection[None, :], second_player_connection[None, :],
-                                    pieces[None, :]), dim=0)
+    if first_player:
+        tensor_state_value = torch.cat((first_player_connection[None, :], second_player_connection[None, :],
+                                        pieces[None, :]), dim=0)
+    else:
+        tensor_state_value = torch.cat((second_player_connection[None, :], first_player_connection[None, :],
+                                        pieces[None, :]), dim=0)
     return tensor_state_value
 
 
@@ -550,6 +575,62 @@ def find_obvious_moves(tensor_state_value, first_player):
             near_a_plus_1 = True
         return near_a_minus_1, near_a_plus_1
 
+    def how_many_minus_1_around(rr, cc, tensor_index_to_check):
+        counter_near_a_minus_1 = 0
+        if rr - 1 >= 0 and tensor_state_value[2, rr - 1, cc] == 0:
+            near_a_minus_1, _ = check_if_near_to_connected(rr - 1, cc, tensor_index_to_check)
+            if near_a_minus_1:
+                counter_near_a_minus_1 += 1
+        if rr + 1 < board_size and tensor_state_value[2, rr + 1, cc] == 0:
+            near_a_minus_1, _ = check_if_near_to_connected(rr + 1, cc, tensor_index_to_check)
+            if near_a_minus_1:
+                counter_near_a_minus_1 += 1
+        if cc - 1 >= 0 and tensor_state_value[2, rr, cc - 1] == 0:
+            near_a_minus_1, _ = check_if_near_to_connected(rr, cc - 1, tensor_index_to_check)
+            if near_a_minus_1:
+                counter_near_a_minus_1 += 1
+        if cc + 1 < board_size and tensor_state_value[2, rr, cc + 1] == 0:
+            near_a_minus_1, _ = check_if_near_to_connected(rr, cc + 1, tensor_index_to_check)
+            if near_a_minus_1:
+                counter_near_a_minus_1 += 1
+        if rr - 1 >= 0 and cc + 1 < board_size and tensor_state_value[2, rr - 1, cc + 1] == 0:
+            near_a_minus_1, _ = check_if_near_to_connected(rr - 1, cc + 1, tensor_index_to_check)
+            if near_a_minus_1:
+                counter_near_a_minus_1 += 1
+        if rr + 1 < board_size and cc - 1 >= 0 and tensor_state_value[2, rr + 1, cc - 1] == 0:
+            near_a_minus_1, _ = check_if_near_to_connected(rr + 1, cc - 1, tensor_index_to_check)
+            if near_a_minus_1:
+                counter_near_a_minus_1 += 1
+        return counter_near_a_minus_1
+
+    def how_many_plus_1_around(rr, cc, tensor_index_to_check):
+        counter_near_a_plus_1 = 0
+        if rr - 1 >= 0 and tensor_state_value[2, rr - 1, cc] == 0:
+            _, near_a_plus_1 = check_if_near_to_connected(rr - 1, cc, tensor_index_to_check)
+            if near_a_plus_1:
+                counter_near_a_plus_1 += 1
+        if rr + 1 < board_size and tensor_state_value[2, rr + 1, cc] == 0:
+            _, near_a_plus_1 = check_if_near_to_connected(rr + 1, cc, tensor_index_to_check)
+            if near_a_plus_1:
+                counter_near_a_plus_1 += 1
+        if cc - 1 >= 0 and tensor_state_value[2, rr, cc - 1] == 0:
+            _, near_a_plus_1 = check_if_near_to_connected(rr, cc - 1, tensor_index_to_check)
+            if near_a_plus_1:
+                counter_near_a_plus_1 += 1
+        if cc + 1 < board_size and tensor_state_value[2, rr, cc + 1] == 0:
+            _, near_a_plus_1 = check_if_near_to_connected(rr, cc + 1, tensor_index_to_check)
+            if near_a_plus_1:
+                counter_near_a_plus_1 += 1
+        if rr - 1 >= 0 and cc + 1 < board_size and tensor_state_value[2, rr - 1, cc + 1] == 0:
+            _, near_a_plus_1 = check_if_near_to_connected(rr - 1, cc + 1, tensor_index_to_check)
+            if near_a_plus_1:
+                counter_near_a_plus_1 += 1
+        if rr + 1 < board_size and cc - 1 >= 0 and tensor_state_value[2, rr + 1, cc - 1] == 0:
+            _, near_a_plus_1 = check_if_near_to_connected(rr + 1, cc - 1, tensor_index_to_check)
+            if near_a_plus_1:
+                counter_near_a_plus_1 += 1
+        return counter_near_a_plus_1
+
     board_size = tensor_state_value.shape[-1]
     empty_board = True
     other_will_win_r = None
@@ -561,6 +642,10 @@ def find_obvious_moves(tensor_state_value, first_player):
         print()
     print("$"*120)
     """
+    list_near_a_minus_1_me = []
+    list_near_a_plus_1_me = []
+    list_near_a_minus_1_other = []
+    list_near_a_plus_1_other = []
     for r in range(board_size):
         for c in range(board_size):
             if tensor_state_value[2, r, c] == 0:
@@ -580,11 +665,17 @@ def find_obvious_moves(tensor_state_value, first_player):
                 if near_a_minus_1_me and near_a_plus_1_me:
                     # print("Obv you will win move!")
                     return r, c
+                elif near_a_minus_1_me:
+                    list_near_a_minus_1_me.append((r, c))
+                elif near_a_plus_1_me:
+                    list_near_a_plus_1_me.append((r, c))
                 if near_a_minus_1_other and near_a_plus_1_other:
-                    # print("Obv the other will win move!")
-                    # print(f"{r}, {c}")
                     other_will_win_r = r
                     other_will_win_c = c
+                elif near_a_minus_1_other:
+                    list_near_a_minus_1_other.append((r, c))
+                elif near_a_plus_1_other:
+                    list_near_a_plus_1_other.append((r, c))
             else:
                 empty_board = False
     if empty_board:
@@ -592,4 +683,48 @@ def find_obvious_moves(tensor_state_value, first_player):
         return board_size // 2, board_size // 2
     if other_will_win_r is not None:
         return other_will_win_r, other_will_win_c
+    for el in list_near_a_minus_1_me:
+        r = el[0]
+        c = el[1]
+        if first_player:
+            if how_many_plus_1_around(r, c, 0) >= 2:
+                #print(f"Obv me winning in 2 moves! [{r}; {c}]")
+                return r, c
+        else:
+            if how_many_plus_1_around(r, c, 1) >= 2:
+                #print(f"Obv me winning in 2 moves! [{r}; {c}]")
+                return r, c
+    for el in list_near_a_plus_1_me:
+        r = el[0]
+        c = el[1]
+        if first_player:
+            if how_many_minus_1_around(r, c, 0) >= 2:
+                #print(f"Obv me winning in 2 moves! [{r}; {c}]")
+                return r, c
+        else:
+            if how_many_minus_1_around(r, c, 1) >= 2:
+                #print(f"Obv me winning in 2 moves! [{r}; {c}]")
+                return r, c
+    for el in list_near_a_minus_1_other:
+        r = el[0]
+        c = el[1]
+        if first_player:
+            if how_many_plus_1_around(r, c, 1) >= 2:
+                #print(f"Obv other winning in 2 moves! [{r}; {c}]")
+                return r, c
+        else:
+            if how_many_plus_1_around(r, c, 0) >= 2:
+                #print(f"Obv other winning in 2 moves! [{r}; {c}]")
+                return r, c
+    for el in list_near_a_plus_1_other:
+        r = el[0]
+        c = el[1]
+        if first_player:
+            if how_many_minus_1_around(r, c, 1) >= 2:
+                #print(f"Obv other winning in 2 moves! [{r}; {c}]")
+                return r, c
+        else:
+            if how_many_minus_1_around(r, c, 0) >= 2:
+                #print(f"Obv other winning in 2 moves! [{r}; {c}]")
+                return r, c
     return None, None

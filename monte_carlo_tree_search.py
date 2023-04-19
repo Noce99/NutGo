@@ -83,8 +83,8 @@ class MCTS:
                         self.actual_node.print_children(0, deep=1)
                     self.path.append(next_child)
                     self.actual_node = next_child
-        #         print(f"I have explored for {time.perf_counter() - starting_time} seconds and done {simulation_counter}"
-        #      f" simulations.")
+        # print(f"I have explored for {time.perf_counter() - starting_time} seconds and done {simulation_counter}"
+        #       f" simulations.")
         # self.root_node.print_children(0, deep=1)
 
         # Total number of matches:
