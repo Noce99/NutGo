@@ -47,23 +47,25 @@ class TOPP:
 
     def play_a_match(self, agent_1, agent_2, visualizer=False):
         half_g = self.g // 2
-        agent_1_wins = 0
-        agent_2_wins = 0
+        agent_1_wins_fp = 0
+        agent_1_wins_sp = 0
+        agent_2_wins_fp = 0
+        agent_2_wins_sp = 0
         for i in range(half_g):
             a_game = HexGame(self.board_size)
             result = a_game.play_a_match(agent_1, agent_2, wait=visualizer, verbose=False, visualizer=visualizer)
             if result:
-                agent_1_wins += 1
+                agent_1_wins_fp += 1
             else:
-                agent_2_wins += 1
+                agent_2_wins_sp += 1
         for i in range(half_g):
             a_game = HexGame(self.board_size)
             result = a_game.play_a_match(agent_2, agent_1, wait=visualizer, verbose=False, visualizer=visualizer)
             if result:
-                agent_2_wins += 1
+                agent_2_wins_fp += 1
             else:
-                agent_1_wins += 1
-        return agent_1_wins, agent_2_wins
+                agent_1_wins_sp += 1
+        return agent_1_wins_fp, agent_1_wins_sp, agent_2_wins_fp, agent_2_wins_sp
 
     def play(self, visualizer=False):
         players = [HexAgent(board_size=self.board_size, batch_size=self.batch_size, learning_rate=self.learning_rate,
@@ -71,16 +73,20 @@ class TOPP:
                             hidden_layers=self.hidden_layers, neuron_per_layers=self.neuron_per_layers,
                             activation_function=self.activation_function)
                    for _ in range(self.m)]
-        num_of_wins = [0 for _ in range(self.m)]
+        num_of_wins = [[0, 0] for _ in range(self.m)]
         for i in range(self.m):
             players[i].load_weight(f"{self.board_size}x{self.board_size}_player_{i}", folder=self.directory)
         for i in range(self.m - 1):
             for j in range(i + 1, self.m):
-                i_wins, j_wins = self.play_a_match(players[i], players[j], visualizer)
-                num_of_wins[i] += i_wins
-                num_of_wins[j] += j_wins
+                agent_1_wins_fp, agent_1_wins_sp, agent_2_wins_fp, agent_2_wins_sp =\
+                    self.play_a_match(players[i], players[j], visualizer)
+                num_of_wins[i][0] += agent_1_wins_fp
+                num_of_wins[i][1] += agent_1_wins_sp
+                num_of_wins[j][0] += agent_2_wins_fp
+                num_of_wins[j][1] += agent_2_wins_sp
         for i in range(self.m):
-            print(f"player_{i} won {num_of_wins[i]} times.")
+            # print(f"player_{i} won {num_of_wins[i][0]+num_of_wins[i][1]} [{num_of_wins[i]}] times.")
+            print(f"player_{i} won {num_of_wins[i][0]+num_of_wins[i][1]} times.")
 
     def train_solo(self):
         players = [HexAgent(board_size=self.board_size, batch_size=self.batch_size, learning_rate=self.learning_rate,
@@ -88,11 +94,13 @@ class TOPP:
                             hidden_layers=self.hidden_layers, neuron_per_layers=self.neuron_per_layers,
                             activation_function=self.activation_function)
                    for _ in range(self.m)]
-        for i in range(self.m):
+        for i in range(1, self.m):
             players[i].load_dataset(f"{self.board_size}x{self.board_size}_player_{i}")
 
-        for i in range(self.m):
-            players[i].just_train(600 * i)
+        train_epochs = [0, 10, 100, 500, 1000]
+
+        for i in range(1, self.m):
+            players[i].just_train(train_epochs[i])
             plt.plot(list(range(len(players[i].trainer.train_history))), players[i].trainer.train_history,
                      label=f"player {i}")
         plt.legend()
@@ -107,17 +115,23 @@ class TOPP:
                      hidden_layers=self.hidden_layers, neuron_per_layers=self.neuron_per_layers,
                      activation_function=self.activation_function)
             for _ in range(self.m)]
-        for i in range(self.m):
-            players[i].load_dataset(f"{self.board_size}x{self.board_size}_player_{i}")
-
-        i_wins, j_wins = self.play_a_match(players[id_player_1], players[id_player_2], visualizer=True)
-        print(f"Player 1 won {i_wins} times and player 2 {j_wins} times.")
+        players[id_player_1].load_weight(f"{self.board_size}x{self.board_size}_player_{id_player_1}",
+                                         folder=self.directory)
+        players[id_player_2].load_weight(f"{self.board_size}x{self.board_size}_player_{id_player_2}",
+                                         folder=self.directory)
+        a_game = HexGame(self.board_size)
+        result = a_game.play_a_match(players[id_player_1], players[id_player_2], wait=True, verbose=False,
+                                     visualizer=False)
+        if result:
+            print("Player 1 won!")
+        else:
+            print("Player 2 won!")
 
 
 if __name__ == "__main__":
     tournament = TOPP(board_size=5, total_episodes=20, m=5, g=25, batch_size=32, learning_rate=3,
-                      max_num_of_data=10000, optimizer="SGD", directory="./long_trained_TOP",  # "./demo"
-                      epochs=500, time_limit=10, simulations_limit=2000, prob_of_random_move=0.8, hidden_layers=0,
+                      max_num_of_data=10000, optimizer="SGD", directory="./demo",  # "./long_trained_TOPP"
+                      epochs=600, time_limit=10, simulations_limit=2000, prob_of_random_move=1.0, hidden_layers=0,
                       neuron_per_layers=64, activation_function="RELU")
-    #tournament.train()
+    tournament.train()
     tournament.play(visualizer=False)

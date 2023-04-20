@@ -503,11 +503,21 @@ def from_state_value_to_tensor(state, first_player):
                         second_player_connection[r, c] = -1
 
     if first_player:
-        tensor_state_value = torch.cat((first_player_connection[None, :], second_player_connection[None, :],
-                                        pieces[None, :]), dim=0)
+        if board_size < 6:
+            tensor_state_value = torch.cat((torch.ones((1, board_size, board_size)),
+                                            torch.ones((1, board_size, board_size)),
+                                            pieces[None, :]), dim=0)
+        else:
+            tensor_state_value = torch.cat((first_player_connection[None, :], second_player_connection[None, :],
+                                            pieces[None, :]), dim=0)
     else:
-        tensor_state_value = torch.cat((second_player_connection[None, :], first_player_connection[None, :],
-                                        pieces[None, :]), dim=0)
+        if board_size < 6:
+            tensor_state_value = torch.cat((torch.ones((1, board_size, board_size))*-1,
+                                            torch.ones((1, board_size, board_size))*-1,
+                                            pieces[None, :]), dim=0)
+        else:
+            tensor_state_value = torch.cat((second_player_connection[None, :], first_player_connection[None, :],
+                                            pieces[None, :]), dim=0)
     return tensor_state_value
 
 

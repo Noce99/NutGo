@@ -30,7 +30,7 @@ class HexConvolutionalModel(nn.Module):
         super().__init__()
         activation_functions = {"linear": None, "sigmoid": nn.Sigmoid(), "tanh": nn.Tanh(), "RELU": nn.ReLU()}
         if self.board_size < 6:
-            layers = [("0", nn.Linear(self.board_size * self.board_size, neuron_per_layers))]
+            layers = [("0", nn.Linear(self.board_size * self.board_size + 1, neuron_per_layers))]
             for hl in range(hidden_layers):
                 layers.append((f"activation_{hl}", activation_functions[activation_function]))
                 layers.append((f"hl_{hl}", nn.Linear(neuron_per_layers, neuron_per_layers)))
@@ -68,8 +68,9 @@ class HexConvolutionalModel(nn.Module):
 
     def forward(self, x):
         if self.board_size < 6:
+            player = x[:, 0, 0, 0]
             x = x[:, 2, :, :]
-            x = torch.flatten(x, 1)
+            x = torch.concat([torch.transpose(player[None, :], 0, 1), torch.flatten(x, 1)], 1)
         out = self.next_move_finder(x)
         if self.board_size < 6:
             out = torch.reshape(out, (out.shape[0], self.board_size, self.board_size))
